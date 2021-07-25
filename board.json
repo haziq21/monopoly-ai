@@ -1,0 +1,308 @@
+[
+	{
+		"type": "go"
+	},
+	{
+		"type": "property",
+		"colour": "brown",
+		"price": 60,
+		"rental costs": [
+			70,
+			130,
+			220,
+			370,
+			750
+		]
+	},
+	{
+		"type": "event"
+	},
+	{
+		"type": "property",
+		"colour": "brown",
+		"price": 60,
+		"rental costs": [
+			70,
+			130,
+			220,
+			370,
+			750
+		]
+	},
+	{
+		"type": "event"
+	},
+	{
+		"type": "property",
+		"colour": "light blue",
+		"price": 100,
+		"rental costs": [
+			80,
+			140,
+			240,
+			410,
+			800
+		]
+	},
+	{
+		"type": "property",
+		"colour": "light blue",
+		"price": 100,
+		"rental costs": [
+			80,
+			140,
+			240,
+			410,
+			800
+		]
+	},
+	{
+		"type": "location"
+	},
+	{
+		"type": "property",
+		"colour": "light blue",
+		"price": 120,
+		"rental costs": [
+			100,
+			160,
+			260,
+			440,
+			860
+		]
+	},
+	{
+		"type": "jail"
+	},
+	{
+		"type": "property",
+		"colour": "pink",
+		"price": 140,
+		"rental costs": [
+			110,
+			180,
+			290,
+			460,
+			900
+		]
+	},
+	{
+		"type": "event"
+	},
+	{
+		"type": "property",
+		"colour": "pink",
+		"price": 140,
+		"rental costs": [
+			110,
+			180,
+			290,
+			460,
+			900
+		]
+	},
+	{
+		"type": "property",
+		"colour": "pink",
+		"price": 160,
+		"rental costs": [
+			130,
+			200,
+			310,
+			490,
+			980
+		]
+	},
+	{
+		"type": "property",
+		"colour": "orange",
+		"price": 180,
+		"rental costs": [
+			140,
+			210,
+			330,
+			520,
+			1000
+		]
+	},
+	{
+		"type": "property",
+		"colour": "orange",
+		"price": 180,
+		"rental costs": [
+			140,
+			210,
+			330,
+			520,
+			1000
+		]
+	},
+	{
+		"type": "location"
+	},
+	{
+		"type": "property",
+		"colour": "orange",
+		"price": 200,
+		"rental costs": [
+			160,
+			230,
+			350,
+			550,
+			1100
+		]
+	},
+	{
+		"type": "free parking"
+	},
+	{
+		"type": "property",
+		"colour": "red",
+		"price": 220,
+		"rental costs": [
+			170,
+			250,
+			380,
+			580,
+			1160
+		]
+	},
+	{
+		"type": "event"
+	},
+	{
+		"type": "property",
+		"colour": "red",
+		"price": 220,
+		"rental costs": [
+			170,
+			250,
+			380,
+			580,
+			1160
+		]
+	},
+	{
+		"type": "property",
+		"colour": "red",
+		"price": 240,
+		"rental costs": [
+			190,
+			270,
+			400,
+			610,
+			1200
+		]
+	},
+	{
+		"type": "property",
+		"colour": "yellow",
+		"price": 260,
+		"rental costs": [
+			200,
+			280,
+			420,
+			640,
+			1300
+		]
+	},
+	{
+		"type": "property",
+		"colour": "yellow",
+		"price": 260,
+		"rental costs": [
+			200,
+			280,
+			420,
+			640,
+			1300
+		]
+	},
+	{
+		"type": "location"
+	},
+	{
+		"type": "property",
+		"colour": "yellow",
+		"price": 280,
+		"rental costs": [
+			220,
+			300,
+			440,
+			670,
+			1340
+		]
+	},
+	{
+		"type": "go to jail"
+	},
+	{
+		"type": "property",
+		"colour": "green",
+		"price": 300,
+		"rental costs": [
+			230,
+			320,
+			460,
+			700,
+			1400
+		]
+	},
+	{
+		"type": "event"
+	},
+	{
+		"type": "property",
+		"colour": "green",
+		"price": 300,
+		"rental costs": [
+			230,
+			320,
+			460,
+			700,
+			1400
+		]
+	},
+	{
+		"type": "property",
+		"colour": "green",
+		"price": 320,
+		"rental costs": [
+			250,
+			340,
+			480,
+			730,
+			1440
+		]
+	},
+	{
+		"type": "event"
+	},
+	{
+		"type": "property",
+		"colour": "blue",
+		"price": 350,
+		"rental costs": [
+			270,
+			360,
+			510,
+			740,
+			1500
+		]
+	},
+	{
+		"type": "location"
+	},
+	{
+		"type": "property",
+		"colour": "blue",
+		"price": 400,
+		"rental costs": [
+			300,
+			400,
+			560,
+			810,
+			1600
+		]
+	}
+]
