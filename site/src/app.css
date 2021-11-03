@@ -1,0 +1,27 @@
+/* Write your global styles here, in PostCSS syntax */
+
+@import '@fontsource/fira-mono';
+
+@tailwind base;
+
+html {
+	@apply bg-gray-900 text-gray-400;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+::-webkit-scrollbar {
+	display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+* {
+	-ms-overflow-style: none; /* IE and Edge */
+	scrollbar-width: none; /* Firefox */
+}
+
+#svelte {
+	min-height: 100vh;
+}
+
+@tailwind components;
+@tailwind utilities;
