@@ -1,20 +1,6 @@
 import clone from "just-clone";
-
-/** Information about a dice roll */
-interface Roll {
-    sum: number;
-    doubles: number | null;
-    probability: number;
-}
-
-/** A player playing the game */
-interface Player {
-    position: number;
-    balance: number;
-    inJail: boolean;
-    doublesRolled: number;
-    toString(): string;
-}
+import { generateSignificantRolls } from "./precalculatedRolls";
+import { Board, Player } from "./types";
 
 function PlayerFactory(
     position = 0,
@@ -46,52 +32,13 @@ function PlayerFactory(
     };
 }
 
-/** A property tile on the game board */
-interface PropertyTile {
-    type: "property";
-    color: "green";
-    price: number;
-    rents: number[];
-}
-
-/** A tile on the game board that is not a property */
-interface NonPropertyTile {
-    type: "go" | "jail" | "free parking" | "go to jail" | "event" | "location";
-}
-
-/** A tile on the game board */
-type Tile = PropertyTile | NonPropertyTile;
-
-/** The game board */
-interface Board {
-    tiles: Tile[];
-    currentPlayer: number;
-    moveIsChance: boolean;
-}
-
 /** The current state of the game represented by a node on the game tree */
 class GameState {
     players: Player[];
     board: Board;
     probability: number;
-    // Hard-coded results of all possible dice rolls
-    static readonly significantRolls: Roll[] = [
-        { sum: 2, doubles: 1, probability: 0.027777777777777776 },
-        { sum: 3, doubles: null, probability: 0.05555555555555555 },
-        { sum: 4, doubles: null, probability: 0.05555555555555555 },
-        { sum: 5, doubles: null, probability: 0.1111111111111111 },
-        { sum: 6, doubles: null, probability: 0.1111111111111111 },
-        { sum: 7, doubles: null, probability: 0.16666666666666669 },
-        { sum: 4, doubles: 2, probability: 0.027777777777777776 },
-        { sum: 8, doubles: null, probability: 0.1111111111111111 },
-        { sum: 6, doubles: 3, probability: 0.027777777777777776 },
-        { sum: 9, doubles: null, probability: 0.1111111111111111 },
-        { sum: 8, doubles: 4, probability: 0.027777777777777776 },
-        { sum: 10, doubles: null, probability: 0.05555555555555555 },
-        { sum: 10, doubles: 5, probability: 0.027777777777777776 },
-        { sum: 11, doubles: null, probability: 0.05555555555555555 },
-        { sum: 12, doubles: 6, probability: 0.027777777777777776 },
-    ];
+
+    static readonly significantRolls = generateSignificantRolls();
 
     // minimax: () => number[];
     // staticEvaluation: () => number[];
@@ -103,9 +50,34 @@ class GameState {
         this.probability = probability;
     }
 
-    /** Return the index of the player whose turn it is next. */
-    getNextPlayer(): number {
-        return (this.board.currentPlayer + 1) % this.players.length;
+    /** Return player whose turn it currently is. */
+    get currentPlayer(): Player {
+        return this.players[this.board.currentPlayer];
+    }
+
+    /**
+     * Changes `this.board.currentPlayer` to the
+     * index of the player whose turn it is next.
+     */
+    nextPlayer() {
+        this.board.currentPlayer =
+            (this.board.currentPlayer + 1) % this.players.length;
+    }
+
+    /**
+     * Send the current player to jail. Modifies the
+     * current player object and the current player index.
+     */
+    sendToJail() {
+        // Set current player's position to jail
+        this.players[this.board.currentPlayer].position = 9;
+        this.players[this.board.currentPlayer].inJail = true;
+
+        // Reset doubles counter
+        this.players[this.board.currentPlayer].doublesRolled = 0;
+
+        // It's the next player's turn now
+        this.nextPlayer();
     }
 
     /**
@@ -126,46 +98,68 @@ class GameState {
                 GameState.significantRolls[i].sum;
             updatedPlayers[this.board.currentPlayer].position %= 36;
 
-            // Clone the board
-            let updatedBoard = clone(this.board);
+            // Get next game state
+            let nextState = new GameState(
+                updatedPlayers,
+                clone(this.board),
+                GameState.significantRolls[i].probability
+            );
 
+            // Check if the player landed on 'go to jail'
+            if (nextState.currentPlayer.position === 27) {
+                nextState.sendToJail();
+            }
             // Check if this roll got doubles
-            if (GameState.significantRolls[i].doubles !== null) {
+            else if (GameState.significantRolls[i].doubles !== null) {
                 // Increment the doublesRolled counter
-                updatedPlayers[this.board.currentPlayer].doublesRolled += 1;
+                nextState.currentPlayer.doublesRolled += 1;
 
                 // Go to jail after three consecutive doubles
-                if (
-                    updatedPlayers[this.board.currentPlayer].doublesRolled === 3
-                ) {
-                    // Set current player's position to jail
-                    updatedPlayers[this.board.currentPlayer].position = 9;
-                    updatedPlayers[this.board.currentPlayer].inJail = true;
-
-                    // Reset counter
-                    updatedPlayers[this.board.currentPlayer].doublesRolled = 0;
-
-                    // It's the next player's turn now
-                    updatedBoard.currentPlayer =
-                        (updatedBoard.currentPlayer + 1) %
-                        updatedPlayers.length;
+                if (nextState.currentPlayer.doublesRolled === 3) {
+                    nextState.sendToJail();
                 }
             } else {
-                updatedBoard.currentPlayer =
-                    (updatedBoard.currentPlayer + 1) % updatedPlayers.length;
+                // It's the next player's turn now
+                nextState.nextPlayer();
             }
 
             // Push the new game state to children
-            children.push(
-                new GameState(
-                    updatedPlayers,
-                    updatedBoard,
-                    GameState.significantRolls[i].probability
-                )
-            );
+            children.push(nextState);
         }
 
-        return children;
+        // Get an id representing each player. Players with
+        // the exact same state should have the exact same id.
+        let playerIds = children.map((gs) =>
+            // `this.board.currentPlayer` is the index of the player who *just* moved.
+            // `gs.board.currentPlayer` could be the index of the next player to move
+            // (after the one that just moved), meaning they could have not yet moved.
+            // Hence, we use `this.board.currentPlayer` to get the id of the player
+            // who just moved (instead of `gs.board.currentPlayer`) because we want to
+            // sieve out / merge the players who moved to the exact same place with the
+            // exact same state using different means / methods.
+            JSON.stringify(gs.players[this.board.currentPlayer])
+        );
+
+        // Store non-duplicate nodes here
+        let seen: Record<string, GameState> = {};
+        let lastId: string | undefined;
+        let lastChild: GameState | undefined;
+
+        // Merge duplicate nodes
+        while (
+            (lastId = playerIds.pop()) !== undefined &&
+            (lastChild = children.pop()) !== undefined
+        ) {
+            if (lastId in seen) {
+                // Merge their probabilities
+                seen[lastId].probability += lastChild.probability;
+            } else {
+                // This is the first child encountered with this id
+                seen[lastId] = lastChild;
+            }
+        }
+
+        return Object.values(seen);
     }
 
     /** Get child nodes of the current game state on the game tree */
@@ -181,7 +175,9 @@ class GameState {
     }
 
     toString(): string {
-        let finalStr = `\x1b[33m${this.probability.toFixed(3)}\x1b[0m prob.\n`;
+        let finalStr = `\x1b[33m${this.probability.toFixed(
+            3
+        )}\x1b[0m probability:\n`;
         finalStr += this.players.map((p) => `${p.toString()}`).join("\n");
 
         return "\n" + finalStr;
@@ -200,8 +196,10 @@ let game: GameState = new GameState(players, {
     moveIsChance: true,
 });
 
-game = game.getChildren()[12];
-game = game.getChildren()[12];
+for (let i = 0; i < 4; i++) {
+    let children = game.getChildren();
+    game = children[Math.round(Math.random() * (children.length - 1))];
+}
 
 console.log(
     game
@@ -209,3 +207,5 @@ console.log(
         .map((c) => c.toString())
         .join("\n")
 );
+
+console.log(game.getChildren().length);
