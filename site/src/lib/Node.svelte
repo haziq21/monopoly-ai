@@ -18,9 +18,9 @@
 			<li class="flex justify-between items-center mb-1 w-48 pr-1 rounded border-blue-300">
 				<span
 					class="inline-block w-7 text-center text-sm font-bold
-                    {player.inJail ? 'text-yellow-100' : 'text-gray-900'}
-                    {i === state.board.currentPlayer ? 'bg-gray-300' : 'bg-gray-400'}
-                    rounded-sm"
+                    text-gray-900 rounded-sm
+                    {i === state.board.currentPlayer ? 'bg-gray-300' : 'bg-gray-400'}"
+					class:in-jail={player.inJail}
 				>
 					{player.position}
 				</span>
@@ -39,3 +39,9 @@
 		{/each}
 	</ul>
 </div>
+
+<style>
+	.in-jail {
+		box-shadow: inset 0px 0px 0px 2px rgb(254, 243, 201);
+	}
+</style>
