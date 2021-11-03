@@ -1,16 +1,16 @@
 /** Information about a dice roll, categorised by whether it's a double */
-interface RollByDoubles {
+export interface RollByDoubles {
     doubles: number | null;
     probability: number;
 }
 
 /** Information about a dice roll, categorised by its sum */
-interface RollBySum extends RollByDoubles {
+export interface RollBySum extends RollByDoubles {
     sum: number;
 }
 
 /** A property tile on the game board */
-interface PropertyTile {
+export interface PropertyTile {
     type: 'property';
     color: 'green';
     price: number;
@@ -18,22 +18,22 @@ interface PropertyTile {
 }
 
 /** A tile on the game board that is not a property */
-interface NonPropertyTile {
+export interface NonPropertyTile {
     type: 'go' | 'jail' | 'free parking' | 'go to jail' | 'event' | 'location';
 }
 
 /** A tile on the game board */
-type Tile = PropertyTile | NonPropertyTile;
+export type Tile = PropertyTile | NonPropertyTile;
 
 /** The game board */
-interface Board {
+export interface Board {
     tiles: Tile[];
     currentPlayer: number;
     moveIsChance: boolean;
 }
 
 /** A player playing the game */
-interface Player {
+export interface Player {
     position: number;
     balance: number;
     inJail: boolean;

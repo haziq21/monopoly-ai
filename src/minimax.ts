@@ -1,5 +1,6 @@
-import clone from "just-clone";
-import { generateSignificantRolls } from "./precalculatedRolls";
+import clone from 'just-clone';
+import { generateSignificantRolls } from './precalculatedRolls';
+import { Player, Board } from './types';
 
 export function PlayerFactory(
     position = 0,
@@ -14,8 +15,8 @@ export function PlayerFactory(
         doublesRolled,
 
         toString: function () {
-            let formattedPos = this.position.toLocaleString("en-US", {
-                minimumIntegerDigits: 2,
+            let formattedPos = this.position.toLocaleString('en-US', {
+                minimumIntegerDigits: 2
             });
 
             formattedPos = `\x1b[${
@@ -27,7 +28,7 @@ export function PlayerFactory(
             )}\x1b[0m`;
 
             return `[${formattedPos}] \x1b[33m${this.doublesRolled}\x1b[0mdbls ${formattedBalance}`;
-        },
+        }
     };
 }
 
@@ -176,8 +177,8 @@ export class GameState {
         let finalStr = `\x1b[33m${this.probability.toFixed(
             3
         )}\x1b[0m probability:\n`;
-        finalStr += this.players.map((p) => `${p.toString()}`).join("\n");
+        finalStr += this.players.map((p) => `${p.toString()}`).join('\n');
 
-        return "\n" + finalStr;
+        return '\n' + finalStr;
     }
 }
