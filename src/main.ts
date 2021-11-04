@@ -15,7 +15,11 @@ let game = new GameState(players, {
     moveIsChance: true
 });
 
-game = game.getChildren()[1];
+// Play some turns
+for (let i = 0; i < 10; i++) {
+    const children = game.getChildren();
+    game = children[Math.round(Math.random() * (children.length - 1))];
+}
 
 console.log(
     game
