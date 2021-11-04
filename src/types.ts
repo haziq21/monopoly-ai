@@ -8,7 +8,15 @@ export interface RollBySum {
 /** A property tile on the game board */
 export interface PropertyTile {
     type: 'property';
-    color: 'green';
+    color:
+        | 'brown'
+        | 'light blue'
+        | 'pink'
+        | 'orange'
+        | 'red'
+        | 'yellow'
+        | 'green'
+        | 'blue';
     price: number;
     rents: number[];
 }
