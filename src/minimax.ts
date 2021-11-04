@@ -1,6 +1,6 @@
 import clone from 'just-clone';
-import { generateSignificantRolls } from './precalculatedRolls';
-import { Player, Board } from './types';
+import { significantRolls, singleProbability } from './precalculatedRolls';
+import { Player, Board, RollBySum } from './types';
 
 export function PlayerFactory(
     position = 0,
@@ -37,8 +37,6 @@ export class GameState {
     board: Board;
     probability: number;
 
-    static readonly significantRolls = generateSignificantRolls();
-
     // minimax: () => number[];
     // staticEvaluation: () => number[];
 
@@ -49,9 +47,24 @@ export class GameState {
         this.probability = probability;
     }
 
-    /** Return player whose turn it currently is. */
+    /** The player whose turn it currently is. */
     get currentPlayer(): Player {
         return this.players[this.board.currentPlayer];
+    }
+
+    /**
+     * Move the current player by the specified amount of tiles.
+     * Also awards the player $200 for passing 'Go'.
+     */
+    moveBy(amount: number) {
+        const newPosition = (this.currentPlayer.position + amount) % 36;
+
+        // Give the player $200 if they pass 'Go'
+        if (newPosition < this.currentPlayer.position) {
+            this.currentPlayer.balance += 200;
+        }
+
+        this.currentPlayer.position = newPosition;
     }
 
     /**
@@ -80,6 +93,49 @@ export class GameState {
     }
 
     /**
+     * Return a clone of the current game state.
+     */
+    clone(probability = 1): GameState {
+        return new GameState(
+            clone(this.players),
+            clone(this.board),
+            probability
+        );
+    }
+
+    /** Roll either `tries` times or until we get a double, whichever comes first. */
+    static rollForDoubles(tries: number): RollBySum[] {
+        return significantRolls.map((roll) => {
+            let totalProbability: number;
+
+            // Rolled a double
+            if (roll.doubles !== null) {
+                // The probability of getting this specific double
+                let doubleProbability = 0;
+
+                for (let i = 0; i < tries; i++) {
+                    doubleProbability +=
+                        roll.probability * singleProbability ** i;
+                }
+
+                totalProbability = doubleProbability;
+            }
+
+            // Didn't roll a double
+            else {
+                totalProbability =
+                    roll.probability * singleProbability ** (tries - 1);
+            }
+
+            return {
+                doubles: roll.doubles,
+                sum: roll.sum,
+                probability: totalProbability
+            };
+        });
+    }
+
+    /**
      * Get child nodes of the current game state that can be
      * reached by rolling dice. This only affects properties of the
      * current player and not anything else about the game state.
@@ -87,43 +143,69 @@ export class GameState {
     getRollEffects(): GameState[] {
         const children: GameState[] = [];
 
-        // Loop through all possible dice results
-        for (let i = 0; i < GameState.significantRolls.length; i++) {
-            // Clone the players
-            const updatedPlayers = clone(this.players);
+        // Try getting out of jail if the player is in jail
+        if (this.currentPlayer.inJail) {
+            // Try rolling doubles to get out of jail
+            const doubleProbabilities = GameState.rollForDoubles(3);
 
-            // Update the current player's position
-            updatedPlayers[this.board.currentPlayer].position +=
-                GameState.significantRolls[i].sum;
-            updatedPlayers[this.board.currentPlayer].position %= 36;
+            // Loop through all possible dice results
+            for (let dbl = 0; dbl < doubleProbabilities.length; dbl++) {
+                // Derive a new game state from the current game state
+                const newState = this.clone(
+                    doubleProbabilities[dbl].probability
+                );
 
-            // Get next game state
-            const nextState = new GameState(
-                updatedPlayers,
-                clone(this.board),
-                GameState.significantRolls[i].probability
-            );
+                // Update the current player's position
+                newState.moveBy(doubleProbabilities[dbl].sum);
+                newState.currentPlayer.inJail = false;
+                // Now the player has to do something according to the tile they're on
+                newState.board.moveIsChance = false;
 
-            // Check if the player landed on 'go to jail'
-            if (nextState.currentPlayer.position === 27) {
-                nextState.sendToJail();
+                // We didn't manage to roll doubles
+                if (doubleProbabilities[dbl].doubles === null) {
+                    // $100 penalty for not rolling doubles
+                    newState.currentPlayer.balance -= 100;
+                }
+
+                // Push the updated state to children
+                children.push(newState);
             }
-            // Check if this roll got doubles
-            else if (GameState.significantRolls[i].doubles !== null) {
-                // Increment the doublesRolled counter
-                nextState.currentPlayer.doublesRolled += 1;
+        }
 
-                // Go to jail after three consecutive doubles
-                if (nextState.currentPlayer.doublesRolled === 3) {
+        // Otherwise, play as normal
+        else {
+            // Loop through all possible dice results
+            for (let i = 0; i < significantRolls.length; i++) {
+                // Derive a new game state from the current game state
+                const nextState = this.clone(significantRolls[i].probability);
+
+                // Update the current player's position
+                nextState.moveBy(significantRolls[i].sum);
+
+                // Check if the player landed on 'go to jail'
+                if (nextState.currentPlayer.position === 27) {
                     nextState.sendToJail();
                 }
-            } else {
-                // It's the next player's turn now
-                nextState.nextPlayer();
-            }
+                // Check if this roll got doubles
+                else if (significantRolls[i].doubles !== null) {
+                    // Increment the doublesRolled counter
+                    nextState.currentPlayer.doublesRolled += 1;
 
-            // Push the new game state to children
-            children.push(nextState);
+                    // Go to jail after three consecutive doubles
+                    if (nextState.currentPlayer.doublesRolled === 3) {
+                        nextState.sendToJail();
+                    }
+                } else {
+                    // Reset doubles counter
+                    nextState.currentPlayer.doublesRolled = 0;
+
+                    // Now the player has to do something according to the tile they're on
+                    nextState.board.moveIsChance = false;
+                }
+
+                // Push the new game state to children
+                children.push(nextState);
+            }
         }
 
         // Get an id representing each player. Players with
@@ -158,25 +240,32 @@ export class GameState {
             }
         }
 
+        // Return de-duplicated nodes
         return Object.values(seen);
+    }
+
+    getChoiceEffects(): GameState[] {
+        let child = this.clone();
+        child.nextPlayer();
+        child.board.moveIsChance = true;
+
+        return [child];
     }
 
     /** Get child nodes of the current game state on the game tree */
     getChildren(): GameState[] {
-        let children: GameState[] = [];
-
-        // The next move to be made is a dice roll
-        if (this.board.moveIsChance) {
-            children = this.getRollEffects();
-        }
-
-        return children;
+        return this.board.moveIsChance
+            ? this.getRollEffects()
+            : this.getChoiceEffects();
     }
 
     toString(): string {
-        let finalStr = `\x1b[33m${this.probability.toFixed(
-            3
-        )}\x1b[0m probability:\n`;
+        let finalStr = `Probability: \x1b[33m${(this.probability * 100).toFixed(
+            2
+        )}%\x1b[0m\n`;
+        finalStr += `Next move: ${
+            this.board.moveIsChance ? 'chance' : 'choice'
+        }\n`;
         finalStr += this.players.map((p) => `${p.toString()}`).join('\n');
 
         return '\n' + finalStr;

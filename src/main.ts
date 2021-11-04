@@ -16,7 +16,7 @@ let game = new GameState(players, {
 });
 
 // Play some turns
-for (let i = 0; i < 10; i++) {
+for (let i = 0; i < 100; i++) {
     const children = game.getChildren();
     game = children[Math.round(Math.random() * (children.length - 1))];
 }
@@ -26,4 +26,16 @@ console.log(
         .getChildren()
         .map((c) => c.toString())
         .join('\n')
+);
+
+let totalProbability = game
+    .getChildren()
+    .reduce((p, c) => p + c.probability, 0);
+
+// To ignore inaccuracies with floating-point math
+totalProbability = Math.round(totalProbability * 10 ** 10) / 10 ** 10;
+
+console.assert(
+    totalProbability === 1,
+    `Total probability is not 1 (${totalProbability})`
 );

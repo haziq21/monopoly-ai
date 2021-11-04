@@ -1,12 +1,12 @@
 // This file generates an array of all possible dice rolls
 
-import { RollBySum, RollByDoubles } from './types';
+import { RollBySum } from './types';
 
 /**
  * Generate an array of all possible
  * dice rolls, categorised by their sums.
  */
-export function generateSignificantRolls(): RollBySum[] {
+export const significantRolls: RollBySum[] = (() => {
     const sigRolls: RollBySum[] = [];
 
     // Loop through all possible dice results
@@ -21,20 +21,9 @@ export function generateSignificantRolls(): RollBySum[] {
 
             // Check if this roll was a double
             if (roll.doubles !== null) {
-                // Check if there already exists a roll in sigRolls with the same `doubles`
-                const doublePos = sigRolls.findIndex(
-                    (r) => r.doubles === roll.doubles
-                );
-
-                if (doublePos !== -1) {
-                    // If a roll with the same `doubles` already exists in
-                    // sigRolls, merge the probabilities of the two rolls
-                    sigRolls[doublePos].probability += roll.probability;
-                } else {
-                    // Push a new Roll object to sigRolls if a roll
-                    // with the same `doubles` doesn't already exist
-                    sigRolls.push(roll);
-                }
+                // Push a new Roll object to sigRolls if a roll
+                // with the same `doubles` doesn't already exist
+                sigRolls.push(roll);
             } else {
                 // Check if there already exists a roll in sigRolls with the same sum
                 const sumPos = sigRolls.findIndex((r) => r.sum === roll.sum);
@@ -53,33 +42,9 @@ export function generateSignificantRolls(): RollBySum[] {
     }
 
     return sigRolls;
-}
+})();
 
-/**
- * Generate an array of all possible dice rolls,
- * categorised by whether the rolls are doubles.
- */
-export function generateDoubleRolls(): RollByDoubles[] {
-    const sigRolls = generateSignificantRolls();
-
-    // An array of significant rolls that are doubles
-    const dblRolls: RollByDoubles[] = sigRolls
-        .filter((r) => r.doubles !== null)
-        .map((r) => ({
-            doubles: r.doubles,
-            probability: r.probability
-        }));
-
-    // A single object to store all the non-double rolls
-    const nonDblRolls: RollByDoubles = sigRolls
-        .filter((r) => r.doubles === null)
-        .reduce(
-            (p, c) => ({
-                doubles: null,
-                probability: p.probability + c.probability
-            }),
-            { doubles: null, probability: 0 }
-        );
-
-    return [...dblRolls, nonDblRolls];
-}
+/** Probablity of NOT rolling a double in one try */
+export const singleProbability = significantRolls
+    .filter((r) => r.doubles === null)
+    .reduce((p, c) => p + c.probability, 0);

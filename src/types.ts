@@ -1,11 +1,7 @@
-/** Information about a dice roll, categorised by whether it's a double */
-export interface RollByDoubles {
+/** Information about a dice roll, categorised by its sum */
+export interface RollBySum {
     doubles: number | null;
     probability: number;
-}
-
-/** Information about a dice roll, categorised by its sum */
-export interface RollBySum extends RollByDoubles {
     sum: number;
 }
 
