@@ -301,6 +301,8 @@ export class GameState {
         // The rent level increases because the property is owned by this player
         else if (this.currentProperty.owner === this.board.currentPlayerIndex) {
             const newState = this.clone();
+
+            assert(newState.currentProperty.rentLevel !== null);
             newState.currentProperty.rentLevel = Math.min(
                 newState.currentProperty.rentLevel + 1,
                 5
@@ -311,6 +313,10 @@ export class GameState {
         // The player has to pay rent because it's someone else's property
         else {
             const newState = this.clone();
+
+            assert(newState.currentProperty.rentLevel !== null);
+            assert(newState.currentProperty.owner !== null);
+
             const balanceDue =
                 newState.currentProperty.rents[
                     newState.currentProperty.rentLevel
