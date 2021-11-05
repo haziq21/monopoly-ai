@@ -1,39 +1,35 @@
-/** Information about a dice roll, categorised by its sum */
-export interface RollBySum {
+/** Information about a dice roll. */
+export interface DiceRoll {
     doubles: number | null;
     probability: number;
     sum: number;
 }
 
+/** The color of a property. */
+export type PropertyColor =
+    | 'brown'
+    | 'light blue'
+    | 'pink'
+    | 'orange'
+    | 'red'
+    | 'yellow'
+    | 'green'
+    | 'blue';
+
 /** A property tile on the game board */
-export interface PropertyTile {
-    type: 'property';
-    color:
-        | 'brown'
-        | 'light blue'
-        | 'pink'
-        | 'orange'
-        | 'red'
-        | 'yellow'
-        | 'green'
-        | 'blue';
+export interface Property {
+    color: PropertyColor;
     price: number;
     rents: number[];
+    rentLevel: number | null;
+    owner: number | null;
 }
-
-/** A tile on the game board that is not a property */
-export interface NonPropertyTile {
-    type: 'go' | 'jail' | 'free parking' | 'go to jail' | 'event' | 'location';
-}
-
-/** A tile on the game board */
-export type Tile = PropertyTile | NonPropertyTile;
 
 /** The game board */
 export interface Board {
-    tiles: Tile[];
-    currentPlayer: number;
-    moveIsChance: boolean;
+    properties: Record<number, Property>;
+    currentPlayerIndex: number;
+    nextMoveIsChance: boolean;
 }
 
 /** A player playing the game */

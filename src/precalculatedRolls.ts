@@ -1,13 +1,13 @@
 // This file generates an array of all possible dice rolls
 
-import { RollBySum } from './types';
+import { DiceRoll } from './types';
 
 /**
  * Generate an array of all possible
  * dice rolls, categorised by their sums.
  */
-export const significantRolls: RollBySum[] = (() => {
-    const sigRolls: RollBySum[] = [];
+export const significantRolls: DiceRoll[] = (() => {
+    const sigRolls: DiceRoll[] = [];
 
     // Loop through all possible dice results
     for (let d1 = 1; d1 <= 6; d1++) {

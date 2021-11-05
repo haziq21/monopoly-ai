@@ -1,6 +1,14 @@
 import clone from 'just-clone';
+import { assert } from './helpers';
 import { significantRolls, singleProbability } from './precalculatedRolls';
-import { Player, Board, RollBySum } from './types';
+import { Player, Board, DiceRoll, Property } from './types';
+
+const propertyPositions = [
+    1, 3, 5, 6, 8, 10, 12, 13, 14, 15, 17, 19, 21, 22, 23, 24, 26, 28, 30, 31,
+    33, 35
+];
+
+const locationPositions = [7, 16, 25, 34];
 
 export function PlayerFactory(
     position = 0,
@@ -35,13 +43,17 @@ export function PlayerFactory(
 export class GameState {
     players: Player[];
     board: Board;
-    probability: number;
+    probability: number | null;
 
     // minimax: () => number[];
     // staticEvaluation: () => number[];
 
     /** Produce a game state, or a node on the game tree */
-    constructor(players: Player[], board: Board, probability = 1) {
+    constructor(
+        players: Player[],
+        board: Board,
+        probability: number | null = 1
+    ) {
         this.players = players;
         this.board = board;
         this.probability = probability;
@@ -49,14 +61,19 @@ export class GameState {
 
     /** The player whose turn it currently is. */
     get currentPlayer(): Player {
-        return this.players[this.board.currentPlayer];
+        return this.players[this.board.currentPlayerIndex];
+    }
+
+    /** The property which the current player is on. */
+    get currentProperty(): Property {
+        return this.board.properties[this.currentPlayer.position];
     }
 
     /**
      * Move the current player by the specified amount of tiles.
      * Also awards the player $200 for passing 'Go'.
      */
-    moveBy(amount: number) {
+    moveBy(amount: number): void {
         const newPosition = (this.currentPlayer.position + amount) % 36;
 
         // Give the player $200 if they pass 'Go'
@@ -72,8 +89,12 @@ export class GameState {
      * index of the player whose turn it is next.
      */
     nextPlayer(): void {
-        this.board.currentPlayer =
-            (this.board.currentPlayer + 1) % this.players.length;
+        // Change the currentPlayer index to the index of the next player
+        this.board.currentPlayerIndex =
+            (this.board.currentPlayerIndex + 1) % this.players.length;
+
+        // The next player rolls the dice
+        this.board.nextMoveIsChance = true;
     }
 
     /**
@@ -82,20 +103,18 @@ export class GameState {
      */
     sendToJail(): void {
         // Set current player's position to jail
-        this.players[this.board.currentPlayer].position = 9;
-        this.players[this.board.currentPlayer].inJail = true;
+        this.players[this.board.currentPlayerIndex].position = 9;
+        this.players[this.board.currentPlayerIndex].inJail = true;
 
         // Reset doubles counter
-        this.players[this.board.currentPlayer].doublesRolled = 0;
+        this.players[this.board.currentPlayerIndex].doublesRolled = 0;
 
         // It's the next player's turn now
         this.nextPlayer();
     }
 
-    /**
-     * Return a clone of the current game state.
-     */
-    clone(probability = 1): GameState {
+    /** Return a clone of the current game state. */
+    clone(probability: number | null = null): GameState {
         return new GameState(
             clone(this.players),
             clone(this.board),
@@ -104,7 +123,22 @@ export class GameState {
     }
 
     /** Roll either `tries` times or until we get a double, whichever comes first. */
-    static rollForDoubles(tries: number): RollBySum[] {
+    static rollForDoubles(tries: number): DiceRoll[] {
+        /* 
+        Let P(S) be the probability that a double is not attained in one roll.
+        Let P(r) be the probability of obtaining this specific dice configuration `r` after one roll.
+
+        When rolling the dice for maximum of `n` times, or stopping
+        when we get doubles, the probabilities work out as follows:
+
+        The probability of the final roll being any double `d` (where the sum
+        of the dice is `2d`) is given by `sum_(i=0)^(n-1) P(r) * P(S)^i`.
+        
+        The probability of all `n` rolls being non-doubles, where the sum of the
+        final roll is `s`, is given by `P(r) * P(S)^(n - 1)`.
+        
+        The following code implements this.
+        */
         return significantRolls.map((roll) => {
             let totalProbability: number;
 
@@ -159,7 +193,7 @@ export class GameState {
                 newState.moveBy(doubleProbabilities[dbl].sum);
                 newState.currentPlayer.inJail = false;
                 // Now the player has to do something according to the tile they're on
-                newState.board.moveIsChance = false;
+                newState.board.nextMoveIsChance = false;
 
                 // We didn't manage to roll doubles
                 if (doubleProbabilities[dbl].doubles === null) {
@@ -198,10 +232,10 @@ export class GameState {
                 } else {
                     // Reset doubles counter
                     nextState.currentPlayer.doublesRolled = 0;
-
-                    // Now the player has to do something according to the tile they're on
-                    nextState.board.moveIsChance = false;
                 }
+
+                // Now the player has to do something according to the tile they're on
+                nextState.board.nextMoveIsChance = false;
 
                 // Push the new game state to children
                 children.push(nextState);
@@ -218,7 +252,7 @@ export class GameState {
             // who just moved (instead of `gs.board.currentPlayer`) because we want to
             // sieve out / merge the players who moved to the exact same place with the
             // exact same state using different means / methods.
-            JSON.stringify(gs.players[this.board.currentPlayer])
+            JSON.stringify(gs.players[this.board.currentPlayerIndex])
         );
 
         // Store non-duplicate nodes here
@@ -232,8 +266,12 @@ export class GameState {
             (lastChild = children.pop()) !== undefined
         ) {
             if (lastId in seen) {
+                const temp: GameState = seen[lastId];
+                assert(temp.probability !== null);
+                assert(lastChild.probability !== null);
+
                 // Merge their probabilities
-                seen[lastId].probability += lastChild.probability;
+                temp.probability += lastChild.probability;
             } else {
                 // This is the first child encountered with this id
                 seen[lastId] = lastChild;
@@ -244,30 +282,126 @@ export class GameState {
         return Object.values(seen);
     }
 
-    getChoiceEffects(): GameState[] {
-        let child = this.clone();
-        child.nextPlayer();
-        child.board.moveIsChance = true;
+    getPropertyChoiceEffects(): GameState[] {
+        const children: GameState[] = [];
 
-        return [child];
+        // The player can choose to buy the property
+        if (this.currentProperty.owner === null) {
+            // Choose not to buy this property
+            const noBuy = this.clone();
+
+            // Choose to buy this property
+            const buyProp = this.clone();
+            buyProp.currentProperty.owner = buyProp.board.currentPlayerIndex;
+            buyProp.currentProperty.rentLevel = 1;
+            buyProp.currentPlayer.balance -= buyProp.currentProperty.price;
+
+            children.push(noBuy, buyProp);
+        }
+        // The rent level increases because the property is owned by this player
+        else if (this.currentProperty.owner === this.board.currentPlayerIndex) {
+            const newState = this.clone();
+            newState.currentProperty.rentLevel = Math.min(
+                newState.currentProperty.rentLevel + 1,
+                5
+            );
+
+            children.push(newState);
+        }
+        // The player has to pay rent because it's someone else's property
+        else {
+            const newState = this.clone();
+            const balanceDue =
+                newState.currentProperty.rents[
+                    newState.currentProperty.rentLevel
+                ];
+
+            // Pay the owner...
+            newState.players[newState.currentProperty.owner].balance +=
+                balanceDue;
+
+            // ...using the current player's money
+            newState.currentPlayer.balance -= balanceDue;
+
+            // Then increase the rent level
+            newState.currentProperty.rentLevel = Math.min(
+                newState.currentProperty.rentLevel + 1,
+                5
+            );
+
+            children.push(newState);
+        }
+
+        return children;
+    }
+
+    getLocationChoiceEffects(): GameState[] {
+        const children: GameState[] = [];
+
+        for (let i = 0; i < propertyPositions.length; i++) {
+            const newState = this.clone();
+
+            // Player can teleport to any property on the board
+            newState.currentPlayer.position = propertyPositions[i];
+
+            // Effects of landing on the property
+            children.push(...newState.getPropertyChoiceEffects());
+        }
+
+        return children;
+    }
+
+    getChoiceEffects(): GameState[] {
+        let children: GameState[] = [];
+
+        // The player landed on a location tile
+        if (locationPositions.includes(this.currentPlayer.position)) {
+            children = this.getLocationChoiceEffects();
+        }
+        // The player landed on a property tile
+        else if (propertyPositions.includes(this.currentPlayer.position)) {
+            children = this.getPropertyChoiceEffects();
+        }
+        // TODO: Implement the rest
+        else {
+            let child = this.clone();
+            child.nextPlayer();
+
+            children = [child];
+        }
+
+        // It's the next player's turn if this player didn't roll doubles
+        if (this.currentPlayer.doublesRolled === 0) {
+            for (let i = 0; i < children.length; i++) {
+                children[i].nextPlayer();
+            }
+        }
+
+        return children;
     }
 
     /** Get child nodes of the current game state on the game tree */
     getChildren(): GameState[] {
-        return this.board.moveIsChance
+        return this.board.nextMoveIsChance
             ? this.getRollEffects()
             : this.getChoiceEffects();
     }
 
     toString(): string {
-        let finalStr = `Probability: \x1b[33m${(this.probability * 100).toFixed(
-            2
-        )}%\x1b[0m\n`;
-        finalStr += `Next move: ${
-            this.board.moveIsChance ? 'chance' : 'choice'
-        }\n`;
-        finalStr += this.players.map((p) => `${p.toString()}`).join('\n');
+        const probabilityStr =
+            this.probability !== null
+                ? (this.probability * 100).toFixed(2) + '%'
+                : 'null';
+        const nextMove = this.board.nextMoveIsChance ? 'chance' : 'choice';
+        const playerStrTemplate = (p: Player) =>
+            this.currentPlayer === p
+                ? `${String(p)} < next (\x1b[36m${nextMove}\x1b[0m)`
+                : `${String(p)}`;
+        const playersStr = this.players.map(playerStrTemplate).join('\n');
 
-        return '\n' + finalStr;
+        let finalStr = `\nProbability: \x1b[33m${probabilityStr}\x1b[0m\n`;
+        finalStr += playersStr;
+
+        return finalStr;
     }
 }
