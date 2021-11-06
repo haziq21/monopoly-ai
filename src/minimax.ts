@@ -3,42 +3,14 @@ import { assert } from './helpers';
 import { significantRolls, singleProbability } from './precalculatedRolls';
 import { Player, Board, DiceRoll, Property } from './types';
 
-const propertyPositions = [
-    1, 3, 5, 6, 8, 10, 12, 13, 14, 15, 17, 19, 21, 22, 23, 24, 26, 28, 30, 31,
-    33, 35
-];
-
-const locationPositions = [7, 16, 25, 34];
-
-export function PlayerFactory(
-    position = 0,
-    balance = 1500,
-    inJail = false,
-    doublesRolled = 0
-): Player {
-    return {
-        position,
-        balance,
-        inJail,
-        doublesRolled,
-
-        toString: function () {
-            let formattedPos = this.position.toLocaleString('en-US', {
-                minimumIntegerDigits: 2
-            });
-
-            formattedPos = `\x1b[${
-                this.inJail ? 31 : 36
-            }m${formattedPos}\x1b[0m`;
-
-            const formattedBalance = `\x1b[32m$${this.balance.toFixed(
-                2
-            )}\x1b[0m`;
-
-            return `[${formattedPos}] \x1b[33m${this.doublesRolled}\x1b[0mdbls ${formattedBalance}`;
-        }
-    };
-}
+const positions = {
+    properties: [
+        1, 3, 5, 6, 8, 10, 12, 13, 14, 15, 17, 19, 21, 22, 23, 24, 26, 28, 30,
+        31, 33, 35
+    ],
+    locations: [7, 16, 25, 34],
+    chanceCards: [2, 4, 11, 20, 29, 32]
+};
 
 export class GameState {
     players: Player[];
@@ -234,11 +206,37 @@ export class GameState {
                     nextState.currentPlayer.doublesRolled = 0;
                 }
 
-                // Now the player has to do something according to the tile they're on
-                nextState.board.nextMoveIsChance = false;
+                // Check if the player landed on a chance card tile
+                if (
+                    positions.chanceCards.includes(
+                        nextState.currentPlayer.position
+                    )
+                ) {
+                    // Go through all the chance cards that do not require choices
+                    // (so that we can condense the game state nodes that are pure chance)
 
-                // Push the new game state to children
-                children.push(nextState);
+                    // Chance card: -$50 per property owned
+                    const propertyPenalty = nextState.clone(
+                        (nextState.probability * 1) / 21
+                    );
+
+                    for (let i in propertyPenalty.board.properties) {
+                        if (
+                            propertyPenalty.board.properties[i].owner ===
+                            propertyPenalty.board.currentPlayerIndex
+                        ) {
+                            propertyPenalty.currentPlayer.balance -= 50;
+                        }
+                    }
+
+                    // Chance card: Pay level 1 rent for 2 rounds
+                } else {
+                    // Now the player has to do something according to the tile they're on
+                    nextState.board.nextMoveIsChance = false;
+
+                    // Push the new game state to children
+                    children.push(nextState);
+                }
             }
         }
 
@@ -289,6 +287,7 @@ export class GameState {
         if (this.currentProperty.owner === null) {
             // Choose not to buy this property
             const noBuy = this.clone();
+            // TODO: Implement auctioning
 
             // Choose to buy this property
             const buyProp = this.clone();
@@ -344,11 +343,11 @@ export class GameState {
     getLocationChoiceEffects(): GameState[] {
         const children: GameState[] = [];
 
-        for (let i = 0; i < propertyPositions.length; i++) {
+        for (let i = 0; i < positions.properties.length; i++) {
             const newState = this.clone();
 
             // Player can teleport to any property on the board
-            newState.currentPlayer.position = propertyPositions[i];
+            newState.currentPlayer.position = positions.properties[i];
 
             // Effects of landing on the property
             children.push(...newState.getPropertyChoiceEffects());
@@ -357,16 +356,44 @@ export class GameState {
         return children;
     }
 
+    /** Effects of the chance cards that require the player to make a choice. */
+    chanceCards = {
+        rentLevelTo1: (): GameState[] => {
+            const children: GameState[] = [];
+
+            for (let i in this.board.properties) {
+                // Don't need to add another child node if the rent level is already 1
+                if (this.board.properties[i].rentLevel > 1) {
+                    const child = this.clone();
+
+                    // Set rent level to 1
+                    child.board.properties[i].rentLevel = 1;
+                    children.push(child);
+                }
+            }
+
+            return children;
+        }
+    };
+
+    getChanceCardEffects(): GameState[] {
+        return [...this.clone(3 / 21).chanceCards.rentLevelTo1()];
+    }
+
     getChoiceEffects(): GameState[] {
         let children: GameState[] = [];
 
         // The player landed on a location tile
-        if (locationPositions.includes(this.currentPlayer.position)) {
+        if (positions.locations.includes(this.currentPlayer.position)) {
             children = this.getLocationChoiceEffects();
         }
         // The player landed on a property tile
-        else if (propertyPositions.includes(this.currentPlayer.position)) {
+        else if (positions.properties.includes(this.currentPlayer.position)) {
             children = this.getPropertyChoiceEffects();
+        }
+        // The player landed on a chance card tile
+        else if (positions.chanceCards.includes(this.currentPlayer.position)) {
+            children = this.getChanceCardEffects();
         }
         // TODO: Implement the rest
         else {

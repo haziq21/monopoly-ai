@@ -1,5 +1,5 @@
-import { PropertyFactory } from './helpers';
-import { GameState, PlayerFactory } from './minimax';
+import { PropertyFactory, PlayerFactory } from './helpers';
+import { GameState } from './minimax';
 import { Player } from './types';
 
 // Initialise players
@@ -40,14 +40,10 @@ let game = new GameState(players, {
 });
 
 // Play some turns
-// for (let i = 0; i < 1; i++) {
-//     const children = game.getChildren();
-//     game = children[Math.round(Math.random() * (children.length - 1))];
-//     // game = children[9];
-// }
-
-game = game.getChildren()[3];
-game = game.getChildren()[1];
+for (let i = 0; i < 10; i++) {
+    const children = game.getChildren();
+    game = children[Math.round(Math.random() * (children.length - 1))];
+}
 
 console.log(
     game
