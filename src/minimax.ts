@@ -43,10 +43,16 @@ export class GameState {
 
     /**
      * Move the current player by the specified amount of tiles.
+     * Sets their `inJail` flag to false if appropriate.
      * Also awards the player $200 for passing 'Go'.
      */
     moveBy(amount: number): void {
         const newPosition = (this.currentPlayer.position + amount) % 36;
+
+        // Set the player's `inJail` flag to false if appropriate
+        if (this.currentPlayer.inJail && amount !== 0) {
+            this.currentPlayer.inJail = false;
+        }
 
         // Give the player $200 if they pass 'Go'
         if (newPosition < this.currentPlayer.position) {
@@ -163,9 +169,10 @@ export class GameState {
 
                 // Update the current player's position
                 newState.moveBy(doubleProbabilities[dbl].sum);
-                newState.currentPlayer.inJail = false;
                 // Now the player has to do something according to the tile they're on
                 newState.board.nextMoveIsChance = false;
+
+                // TODO: Refactor this to compress possibilities of choice-less chance cards
 
                 // We didn't manage to roll doubles
                 if (doubleProbabilities[dbl].doubles === null) {
@@ -212,6 +219,8 @@ export class GameState {
                         nextState.currentPlayer.position
                     )
                 ) {
+                    assert(nextState.probability !== null);
+
                     // Go through all the chance cards that do not require choices
                     // (so that we can condense the game state nodes that are pure chance)
 
@@ -219,24 +228,59 @@ export class GameState {
                     const propertyPenalty = nextState.clone(
                         (nextState.probability * 1) / 21
                     );
+                    let propertyPenaltyIsDifferent = false;
 
+                    // Deduct $50 per property owned
                     for (let i in propertyPenalty.board.properties) {
                         if (
                             propertyPenalty.board.properties[i].owner ===
                             propertyPenalty.board.currentPlayerIndex
                         ) {
                             propertyPenalty.currentPlayer.balance -= 50;
+                            propertyPenaltyIsDifferent = true;
                         }
                     }
 
-                    // Chance card: Pay level 1 rent for 2 rounds
-                } else {
-                    // Now the player has to do something according to the tile they're on
-                    nextState.board.nextMoveIsChance = false;
+                    // Check if the chance card had any effect
+                    if (propertyPenaltyIsDifferent) {
+                        propertyPenalty.nextPlayer();
+                        children.push(propertyPenalty);
+                    }
 
-                    // Push the new game state to children
-                    children.push(nextState);
+                    // Chance card: Pay level 1 rent for 2 rounds
+                    // TODO
+
+                    // Chance card: Move all players not in jail to free parking
+                    const allToParking = nextState.clone(
+                        (nextState.probability * 1) / 21
+                    );
+                    let allToParkingIsDifferent = false;
+
+                    for (let i = 0; i < allToParking.players.length; i++) {
+                        if (!allToParking.players[i].inJail) {
+                            allToParking.players[i].position = 18;
+                            allToParkingIsDifferent = true;
+                        }
+                    }
+
+                    // Check if the chance card had any effect
+                    if (allToParkingIsDifferent) {
+                        allToParking.nextPlayer();
+                        children.push(allToParking);
+                    }
+
+                    nextState.probability *=
+                        (21 -
+                            +propertyPenaltyIsDifferent -
+                            +allToParkingIsDifferent) /
+                        21;
                 }
+
+                // Now the player has to do something according to the tile they're on
+                nextState.board.nextMoveIsChance = false;
+
+                // Push the new game state to children
+                children.push(nextState);
             }
         }
 
@@ -362,8 +406,11 @@ export class GameState {
             const children: GameState[] = [];
 
             for (let i in this.board.properties) {
+                const rentLevel = this.board.properties[i].rentLevel;
+                assert(rentLevel !== null);
+
                 // Don't need to add another child node if the rent level is already 1
-                if (this.board.properties[i].rentLevel > 1) {
+                if (rentLevel > 1) {
                     const child = this.clone();
 
                     // Set rent level to 1
