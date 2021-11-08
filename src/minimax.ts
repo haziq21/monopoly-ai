@@ -223,7 +223,10 @@ export class GameState {
                         nextState.currentPlayer.position
                     )
                 ) {
-                    assert(nextState.probability !== null);
+                    assert(
+                        nextState.probability !== null,
+                        'nextState probability was null before getting choice-less chance card effects'
+                    );
 
                     // Go through all the chance cards that do not require choices
                     // (so that we can condense the game state nodes that are pure chance)
@@ -313,8 +316,14 @@ export class GameState {
         ) {
             if (lastId in seen) {
                 const temp: GameState = seen[lastId];
-                assert(temp.probability !== null);
-                assert(lastChild.probability !== null);
+                assert(
+                    temp.probability !== null,
+                    'null probability while de-duplicating roll children'
+                );
+                assert(
+                    lastChild.probability !== null,
+                    'null probability while de-duplicating roll children'
+                );
 
                 // Merge their probabilities
                 temp.probability += lastChild.probability;
@@ -349,7 +358,10 @@ export class GameState {
         else if (this.currentProperty.owner === this.board.currentPlayerIndex) {
             const newState = this.clone();
 
-            assert(newState.currentProperty.rentLevel !== null);
+            assert(
+                newState.currentProperty.rentLevel !== null,
+                'null rent level while getting effects of self-owned property'
+            );
             newState.currentProperty.rentLevel = Math.min(
                 newState.currentProperty.rentLevel + 1,
                 5
@@ -361,8 +373,14 @@ export class GameState {
         else {
             const newState = this.clone();
 
-            assert(newState.currentProperty.rentLevel !== null);
-            assert(newState.currentProperty.owner !== null);
+            assert(
+                newState.currentProperty.rentLevel !== null,
+                'null rent level while getting effects of other-owned property'
+            );
+            assert(
+                newState.currentProperty.owner !== null,
+                'null rent level while getting effects of other-owned property'
+            );
 
             const balanceDue =
                 newState.currentProperty.rents[
@@ -411,7 +429,13 @@ export class GameState {
 
             for (let i in this.board.properties) {
                 const rentLevel = this.board.properties[i].rentLevel;
-                assert(rentLevel !== null);
+
+                if (rentLevel === null) continue;
+
+                assert(
+                    rentLevel !== null,
+                    'null rent level while getting effects of rentLevelTo1 chance card'
+                );
 
                 // Don't need to add another child node if the rent level is already 1
                 if (rentLevel > 1) {
