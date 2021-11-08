@@ -9,34 +9,41 @@ export function assert(
     }
 }
 
-export function PlayerFactory(
+export function MakePlayers(
+    amount: number,
     position = 0,
     balance = 1500,
     inJail = false,
     doublesRolled = 0
-): Player {
-    return {
-        position,
-        balance,
-        inJail,
-        doublesRolled,
+): Player[] {
+    const players: Player[] = Array(amount);
 
-        toString: function () {
-            let formattedPos = this.position.toLocaleString('en-US', {
-                minimumIntegerDigits: 2
-            });
+    for (let i = 0; i < amount; i++) {
+        players[i] = {
+            position,
+            balance,
+            inJail,
+            doublesRolled,
 
-            formattedPos = `\x1b[${
-                this.inJail ? 31 : 36
-            }m${formattedPos}\x1b[0m`;
+            toString: function () {
+                let formattedPos = this.position.toLocaleString('en-US', {
+                    minimumIntegerDigits: 2
+                });
 
-            const formattedBalance = `\x1b[32m$${this.balance.toFixed(
-                2
-            )}\x1b[0m`;
+                formattedPos = `\x1b[${
+                    this.inJail ? 31 : 36
+                }m${formattedPos}\x1b[0m`;
 
-            return `[${formattedPos}] \x1b[33m${this.doublesRolled}\x1b[0mdbls ${formattedBalance}`;
-        }
-    };
+                const formattedBalance = `\x1b[32m$${this.balance.toFixed(
+                    2
+                )}\x1b[0m`;
+
+                return `[${formattedPos}] \x1b[33m${this.doublesRolled}\x1b[0mdbls ${formattedBalance}`;
+            }
+        };
+    }
+
+    return players;
 }
 
 export function PropertyFactory(

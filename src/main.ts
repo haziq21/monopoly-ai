@@ -1,13 +1,9 @@
-import { PropertyFactory, PlayerFactory, assert } from './helpers';
+import { PropertyFactory, MakePlayers, assert } from './helpers';
 import { GameState } from './minimax';
 import { Player } from './types';
 
 // Initialise players
-const PLAYER_COUNT = 3;
-const players: Player[] = Array(PLAYER_COUNT);
-for (let i = 0; i < PLAYER_COUNT; i++) {
-    players[i] = PlayerFactory();
-}
+const players = MakePlayers(2);
 
 // Initialise game
 let game = new GameState(players, {
@@ -39,11 +35,16 @@ let game = new GameState(players, {
     nextMoveIsChance: true
 });
 
+game = game.getChildren()[15];
+game = game.getChildren()[1];
+game = game.getChildren()[4];
+game = game.getChildren()[0];
+
 // Play some turns
-// for (let i = 0; i < 10; i++) {
-//     const children = game.getChildren();
-//     game = children[Math.round(Math.random() * (children.length - 1))];
-// }
+for (let i = 0; i < 10; i++) {
+    const children = game.getChildren();
+    game = children[Math.round(Math.random() * (children.length - 1))];
+}
 
 console.log(
     game
@@ -63,12 +64,14 @@ const children = game.getChildren();
 if (children.every((p) => p.probability === null)) {
     console.log('No probability');
 } else {
-    console.log(
-        `Probability: ${children.reduce((p, c) => {
-            assert(c.probability !== null);
-            return p + c.probability;
-        }, 0)}`
-    );
+    let totalProbability = game.getChildren().reduce((p, c) => {
+        assert(c.probability !== null);
+        return p + c.probability;
+    }, 0);
+
+    // To ignore inaccuracies with floating-point math
+    totalProbability = Math.round(totalProbability * 10 ** 10) / 10 ** 10;
+    console.log(`Probability: ${totalProbability}`);
 }
 
 // console.assert(
