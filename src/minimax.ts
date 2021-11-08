@@ -73,10 +73,10 @@ export class GameState {
             // Change the currentPlayer index to the index of the next player
             this.board.currentPlayerIndex =
                 (this.board.currentPlayerIndex + 1) % this.players.length;
-
-            // The next player rolls the dice
-            this.board.nextMoveIsChance = true;
         }
+
+        // The player whose turn it is next rolls the dice
+        this.board.nextMoveIsChance = true;
     }
 
     /**
@@ -455,10 +455,8 @@ export class GameState {
         }
 
         // It's the next player's turn if this player didn't roll doubles
-        if (this.currentPlayer.doublesRolled === 0) {
-            for (let i = 0; i < children.length; i++) {
-                children[i].nextPlayer();
-            }
+        for (let i = 0; i < children.length; i++) {
+            children[i].nextPlayer();
         }
 
         return children;
