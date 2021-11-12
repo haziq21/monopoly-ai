@@ -25,11 +25,15 @@ export interface Property {
     owner: number | null;
 }
 
+/** Every chance card */
+export type chanceCard = 'rentLevelTo1' | 'rentLevelTo5';
+
 /** The game board */
 export interface Board {
     properties: Record<number, Property>;
     currentPlayerIndex: number;
     nextMoveIsChance: boolean;
+    activeChanceCard: null | chanceCard;
 }
 
 /** A player playing the game */

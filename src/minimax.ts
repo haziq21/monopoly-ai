@@ -1,7 +1,7 @@
 import clone from 'just-clone';
 import { assert } from './helpers';
 import { significantRolls, singleProbability } from './precalculatedRolls';
-import { Player, Board, DiceRoll, Property } from './types';
+import { Player, Board, DiceRoll, Property, chanceCard } from './types';
 
 const positions = {
     properties: [
@@ -153,6 +153,80 @@ export class GameState {
 
     /**
      * Get child nodes of the current game state that can be
+     * reached by rolling to a chance card tile.
+     */
+    getRollToChanceCardEffects(): [GameState[], number] {
+        const children: GameState[] = [];
+
+        assert(
+            this.probability !== null,
+            'Probability was null before getting chance card effects'
+        );
+
+        // Chance card: -$50 per property owned
+        const propertyPenalty = this.clone(this.probability / 21);
+        let propertyPenaltyIsDifferent = false;
+
+        // Deduct $50 per property owned
+        for (let i in propertyPenalty.board.properties) {
+            if (
+                propertyPenalty.board.properties[i].owner ===
+                propertyPenalty.board.currentPlayerIndex
+            ) {
+                propertyPenalty.currentPlayer.balance -= 50;
+                propertyPenaltyIsDifferent = true;
+            }
+        }
+
+        // Check if the chance card had any effect
+        if (propertyPenaltyIsDifferent) {
+            propertyPenalty.nextPlayer();
+            children.push(propertyPenalty);
+        }
+
+        // Chance card: Pay level 1 rent for 2 rounds
+        // TODO
+
+        // Chance card: Move all players not in jail to free parking
+        const allToParking = this.clone(this.probability / 21);
+        let allToParkingIsDifferent = false;
+
+        for (let i = 0; i < allToParking.players.length; i++) {
+            if (!allToParking.players[i].inJail) {
+                allToParking.players[i].position = 18;
+                allToParkingIsDifferent = true;
+            }
+        }
+
+        // Check if the chance card had any effect
+        if (allToParkingIsDifferent) {
+            allToParking.nextPlayer();
+            children.push(allToParking);
+        }
+
+        // Chance cards that require the player to make a choice
+        const choicefulChanceCards: [number, chanceCard][] = [
+            [3, 'rentLevelTo1'],
+            [1, 'rentLevelTo5']
+        ];
+
+        // Push the child states for all the choiceful chance cards
+        for (const [amount, id] of choicefulChanceCards) {
+            const card = this.clone(this.probability * (amount / 21));
+            card.board.activeChanceCard = id;
+            card.board.nextMoveIsChance = false;
+            children.push(card);
+        }
+
+        const totalChildrenProbability = children
+            .map((c) => c.probability)
+            .reduce((p, c) => p! + c!, 0)!;
+
+        return [children, this.probability! - totalChildrenProbability];
+    }
+
+    /**
+     * Get child nodes of the current game state that can be
      * reached by rolling dice. This only affects properties of the
      * current player and not anything else about the game state.
      */
@@ -223,68 +297,14 @@ export class GameState {
                         nextState.currentPlayer.position
                     )
                 ) {
-                    assert(
-                        nextState.probability !== null,
-                        'nextState probability was null before getting choice-less chance card effects'
-                    );
-
-                    // Go through all the chance cards that do not require choices
-                    // (so that we can condense the game state nodes that are pure chance)
-
-                    // Chance card: -$50 per property owned
-                    const propertyPenalty = nextState.clone(
-                        (nextState.probability * 1) / 21
-                    );
-                    let propertyPenaltyIsDifferent = false;
-
-                    // Deduct $50 per property owned
-                    for (let i in propertyPenalty.board.properties) {
-                        if (
-                            propertyPenalty.board.properties[i].owner ===
-                            propertyPenalty.board.currentPlayerIndex
-                        ) {
-                            propertyPenalty.currentPlayer.balance -= 50;
-                            propertyPenaltyIsDifferent = true;
-                        }
-                    }
-
-                    // Check if the chance card had any effect
-                    if (propertyPenaltyIsDifferent) {
-                        propertyPenalty.nextPlayer();
-                        children.push(propertyPenalty);
-                    }
-
-                    // Chance card: Pay level 1 rent for 2 rounds
-                    // TODO
-
-                    // Chance card: Move all players not in jail to free parking
-                    const allToParking = nextState.clone(
-                        (nextState.probability * 1) / 21
-                    );
-                    let allToParkingIsDifferent = false;
-
-                    for (let i = 0; i < allToParking.players.length; i++) {
-                        if (!allToParking.players[i].inJail) {
-                            allToParking.players[i].position = 18;
-                            allToParkingIsDifferent = true;
-                        }
-                    }
-
-                    // Check if the chance card had any effect
-                    if (allToParkingIsDifferent) {
-                        allToParking.nextPlayer();
-                        children.push(allToParking);
-                    }
-
-                    nextState.probability *=
-                        (21 -
-                            +propertyPenaltyIsDifferent -
-                            +allToParkingIsDifferent) /
-                        21;
+                    const [childStates, choicefulProbability] =
+                        nextState.getRollToChanceCardEffects();
+                    children.push(...childStates);
+                    nextState.probability = choicefulProbability;
+                } else {
+                    // Now the player has to do something according to the tile they're on
+                    nextState.board.nextMoveIsChance = false;
                 }
-
-                // Now the player has to do something according to the tile they're on
-                nextState.board.nextMoveIsChance = false;
 
                 // Push the new game state to children
                 children.push(nextState);
@@ -293,15 +313,18 @@ export class GameState {
 
         // Get an id representing each player. Players with
         // the exact same state should have the exact same id.
-        const playerIds = children.map((gs) =>
-            // `this.board.currentPlayer` is the index of the player who *just* moved.
-            // `gs.board.currentPlayer` could be the index of the next player to move
-            // (after the one that just moved), meaning they could have not yet moved.
-            // Hence, we use `this.board.currentPlayer` to get the id of the player
-            // who just moved (instead of `gs.board.currentPlayer`) because we want to
-            // sieve out / merge the players who moved to the exact same place with the
-            // exact same state using different means / methods.
-            JSON.stringify(gs.players[this.board.currentPlayerIndex])
+        const playerIds = children.map(
+            (gs) =>
+                // `this.board.currentPlayerIndex` is the index of the player who *just* moved.
+                // `gs.board.currentPlayerIndex` could be the index of the next player to move
+                // (after the one that just moved), meaning they could have not yet moved.
+                // Hence, we use `this.board.currentPlayerIndex` to get the id of the player
+                // who just moved (instead of `gs.board.currentPlayer`) because we want to
+                // sieve out / merge the players who moved to the exact same place with the
+                // exact same state using different means / methods.
+                JSON.stringify(gs.players[this.board.currentPlayerIndex]) +
+                JSON.stringify(gs.board.properties) +
+                JSON.stringify(gs.board.activeChanceCard)
         );
 
         // Store non-duplicate nodes here
@@ -423,26 +446,35 @@ export class GameState {
     }
 
     /** Effects of the chance cards that require the player to make a choice. */
-    chanceCards = {
+    chanceCards: Record<chanceCard, () => GameState[]> = {
         rentLevelTo1: (): GameState[] => {
             const children: GameState[] = [];
 
             for (let i in this.board.properties) {
                 const rentLevel = this.board.properties[i].rentLevel;
 
-                if (rentLevel === null) continue;
-
-                assert(
-                    rentLevel !== null,
-                    'null rent level while getting effects of rentLevelTo1 chance card'
-                );
-
                 // Don't need to add another child node if the rent level is already 1
-                if (rentLevel > 1) {
+                if (rentLevel !== null && rentLevel > 1) {
                     const child = this.clone();
-
-                    // Set rent level to 1
                     child.board.properties[i].rentLevel = 1;
+                    children.push(child);
+                }
+            }
+
+            return children.length ? children : [this.clone()];
+        },
+
+        rentLevelTo5: (): GameState[] => {
+            const children: GameState[] = [];
+            const level5 = this.clone(1 / 21);
+
+            for (let i in this.board.properties) {
+                const rentLevel = this.board.properties[i].rentLevel;
+
+                // Don't need to add another child node if the rent level is already 5
+                if (rentLevel !== null && rentLevel < 5) {
+                    const child = level5.clone();
+                    child.board.properties[i].rentLevel = 5;
                     children.push(child);
                 }
             }
@@ -452,7 +484,12 @@ export class GameState {
     };
 
     getChanceCardEffects(): GameState[] {
-        return [...this.clone(3 / 21).chanceCards.rentLevelTo1()];
+        // Get child states according to currently active chance card
+        const children = this.chanceCards[this.board.activeChanceCard!]();
+        // Reset active chance card
+        children.forEach((c) => (c.board.activeChanceCard = null));
+
+        return children;
     }
 
     getChoiceEffects(): GameState[] {
@@ -498,6 +535,7 @@ export class GameState {
             this.probability !== null
                 ? (this.probability * 100).toFixed(2) + '%'
                 : 'null';
+        const activeChanceCard = `Active CC: ${this.board.activeChanceCard}\n`;
         const nextMove = this.board.nextMoveIsChance ? 'chance' : 'choice';
         const playerStrTemplate = (p: Player) =>
             this.currentPlayer === p
@@ -506,6 +544,9 @@ export class GameState {
         const playersStr = this.players.map(playerStrTemplate).join('\n');
 
         let finalStr = `\nProbability: \x1b[33m${probabilityStr}\x1b[0m\n`;
+        if (this.board.activeChanceCard) {
+            finalStr += activeChanceCard;
+        }
         finalStr += playersStr;
 
         return finalStr;

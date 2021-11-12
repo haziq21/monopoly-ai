@@ -32,49 +32,32 @@ let game = new GameState(players, {
         35: PropertyFactory('blue', 400, [300, 400, 560, 810, 1600])
     },
     currentPlayerIndex: 0,
-    nextMoveIsChance: true
+    nextMoveIsChance: true,
+    activeChanceCard: null
 });
 
-game = game.getChildren()[15];
-game = game.getChildren()[1];
-game = game.getChildren()[4];
-game = game.getChildren()[0];
-
 // Play some turns
-for (let i = 0; i < 10; i++) {
-    const children = game.getChildren();
-    game = children[Math.round(Math.random() * (children.length - 1))];
-}
+// for (let i = 0; i < 10; i++) {
+//     const children = game.getChildren();
+//     game = children[Math.round(Math.random() * (children.length - 1))];
+// }
 
-console.log(
-    game
-        .getChildren()
-        .map((c) => c.toString())
-        .join('\n')
-);
-
-// let totalProbability = game
-//     .getChildren()
-//     .reduce((p, c) => p + c.probability, 0);
-
-// // To ignore inaccuracies with floating-point math
-// totalProbability = Math.round(totalProbability * 10 ** 10) / 10 ** 10;
-
+game = game.getChildren()[24];
 const children = game.getChildren();
+
+console.log(children.map((c) => c.toString()).join('\n'));
+console.log(`\n${children.length} child states`);
+
+// Log the total probability
 if (children.every((p) => p.probability === null)) {
-    console.log('No probability');
+    console.log('No total probability');
 } else {
-    let totalProbability = game.getChildren().reduce((p, c) => {
+    let totalProbability = children.reduce((p, c) => {
         assert(c.probability !== null);
         return p + c.probability;
     }, 0);
 
     // To ignore inaccuracies with floating-point math
     totalProbability = Math.round(totalProbability * 10 ** 10) / 10 ** 10;
-    console.log(`Probability: ${totalProbability}`);
+    console.log(`Total probability: ${totalProbability}`);
 }
-
-// console.assert(
-//     totalProbability === 1,
-//     `Total probability is not 1 (${totalProbability})`
-// );
