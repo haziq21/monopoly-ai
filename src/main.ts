@@ -42,7 +42,7 @@ let game = new GameState(players, {
 //     game = children[Math.round(Math.random() * (children.length - 1))];
 // }
 
-game = game.getChildren()[24];
+game = game.getChildren()[2];
 const children = game.getChildren();
 
 console.log(children.map((c) => c.toString()).join('\n'));
@@ -53,8 +53,7 @@ if (children.every((p) => p.probability === null)) {
     console.log('No total probability');
 } else {
     let totalProbability = children.reduce((p, c) => {
-        assert(c.probability !== null);
-        return p + c.probability;
+        return p + c.probability!;
     }, 0);
 
     // To ignore inaccuracies with floating-point math

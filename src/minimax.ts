@@ -109,6 +109,7 @@ export class GameState {
         /* 
         Let P(S) be the probability that a double is not attained in one roll.
         Let P(r) be the probability of obtaining this specific dice configuration `r` after one roll.
+        The return value of `significantRolls()` demonstrates all possible "specific dice configurations".
 
         When rolling the dice for maximum of `n` times, or stopping
         when we get doubles, the probabilities work out as follows:
@@ -116,8 +117,7 @@ export class GameState {
         The probability of the final roll being any double `d` (where the sum
         of the dice is `2d`) is given by `sum_(i=0)^(n-1) P(r) * P(S)^i`.
         
-        The probability of all `n` rolls being non-doubles, where the sum of the
-        final roll is `s`, is given by `P(r) * P(S)^(n - 1)`.
+        The probability of all `n` rolls being non-doubles is given by `P(r) * P(S)^(n - 1)`.
         
         The following code implements this.
         */
@@ -158,13 +158,8 @@ export class GameState {
     getRollToChanceCardEffects(): [GameState[], number] {
         const children: GameState[] = [];
 
-        assert(
-            this.probability !== null,
-            'Probability was null before getting chance card effects'
-        );
-
         // Chance card: -$50 per property owned
-        const propertyPenalty = this.clone(this.probability / 21);
+        const propertyPenalty = this.clone(this.probability! / 21);
         let propertyPenaltyIsDifferent = false;
 
         // Deduct $50 per property owned
@@ -188,7 +183,7 @@ export class GameState {
         // TODO
 
         // Chance card: Move all players not in jail to free parking
-        const allToParking = this.clone(this.probability / 21);
+        const allToParking = this.clone(this.probability! / 21);
         let allToParkingIsDifferent = false;
 
         for (let i = 0; i < allToParking.players.length; i++) {
@@ -212,7 +207,7 @@ export class GameState {
 
         // Push the child states for all the choiceful chance cards
         for (const [amount, id] of choicefulChanceCards) {
-            const card = this.clone(this.probability * (amount / 21));
+            const card = this.clone(this.probability! * (amount / 21));
             card.board.activeChanceCard = id;
             card.board.nextMoveIsChance = false;
             children.push(card);
@@ -339,17 +334,9 @@ export class GameState {
         ) {
             if (lastId in seen) {
                 const temp: GameState = seen[lastId];
-                assert(
-                    temp.probability !== null,
-                    'null probability while de-duplicating roll children'
-                );
-                assert(
-                    lastChild.probability !== null,
-                    'null probability while de-duplicating roll children'
-                );
 
                 // Merge their probabilities
-                temp.probability += lastChild.probability;
+                temp.probability! += lastChild.probability!;
             } else {
                 // This is the first child encountered with this id
                 seen[lastId] = lastChild;
@@ -361,8 +348,6 @@ export class GameState {
     }
 
     getPropertyChoiceEffects(): GameState[] {
-        const children: GameState[] = [];
-
         // The player can choose to buy the property
         if (this.currentProperty.owner === null) {
             // Choose not to buy this property
@@ -375,43 +360,30 @@ export class GameState {
             buyProp.currentProperty.rentLevel = 1;
             buyProp.currentPlayer.balance -= buyProp.currentProperty.price;
 
-            children.push(noBuy, buyProp);
+            return [noBuy, buyProp];
         }
         // The rent level increases because the property is owned by this player
         else if (this.currentProperty.owner === this.board.currentPlayerIndex) {
             const newState = this.clone();
 
-            assert(
-                newState.currentProperty.rentLevel !== null,
-                'null rent level while getting effects of self-owned property'
-            );
             newState.currentProperty.rentLevel = Math.min(
-                newState.currentProperty.rentLevel + 1,
+                newState.currentProperty.rentLevel! + 1,
                 5
             );
 
-            children.push(newState);
+            return [newState];
         }
         // The player has to pay rent because it's someone else's property
         else {
             const newState = this.clone();
 
-            assert(
-                newState.currentProperty.rentLevel !== null,
-                'null rent level while getting effects of other-owned property'
-            );
-            assert(
-                newState.currentProperty.owner !== null,
-                'null rent level while getting effects of other-owned property'
-            );
-
             const balanceDue =
                 newState.currentProperty.rents[
-                    newState.currentProperty.rentLevel
+                    newState.currentProperty.rentLevel!
                 ];
 
             // Pay the owner...
-            newState.players[newState.currentProperty.owner].balance +=
+            newState.players[newState.currentProperty.owner!].balance +=
                 balanceDue;
 
             // ...using the current player's money
@@ -419,14 +391,12 @@ export class GameState {
 
             // Then increase the rent level
             newState.currentProperty.rentLevel = Math.min(
-                newState.currentProperty.rentLevel + 1,
+                newState.currentProperty.rentLevel! + 1,
                 5
             );
 
-            children.push(newState);
+            return [newState];
         }
-
-        return children;
     }
 
     getLocationChoiceEffects(): GameState[] {
@@ -445,7 +415,10 @@ export class GameState {
         return children;
     }
 
-    /** Effects of the chance cards that require the player to make a choice. */
+    /**
+     * Effects of the chance cards that require the player to make a choice.
+     * This is an object because namespaces don't work in classes.
+     */
     chanceCards: Record<chanceCard, () => GameState[]> = {
         rentLevelTo1: (): GameState[] => {
             const children: GameState[] = [];
@@ -479,7 +452,7 @@ export class GameState {
                 }
             }
 
-            return children;
+            return children.length ? children : [this.clone()];
         }
     };
 
@@ -515,7 +488,7 @@ export class GameState {
             children = [child];
         }
 
-        // It's the next player's turn if this player didn't roll doubles
+        // It's the next player's turn (if this player didn't roll doubles)
         for (let i = 0; i < children.length; i++) {
             children[i].nextPlayer();
         }
