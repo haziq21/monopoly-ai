@@ -649,7 +649,45 @@ export class GameState {
             return children.length ? children : [this.clone()];
         },
         swapProperty: (): GameState[] => {
-            return [];
+            const children: GameState[] = [];
+
+            for (let myProp = 0; myProp < this.props.length; myProp++) {
+                // Skip if the player doesn't own this property
+                if (
+                    this.props[myProp].owner !== this.board.currentPlayerIndex
+                ) {
+                    continue;
+                }
+
+                for (
+                    let opponentProp = 0;
+                    opponentProp < this.props.length;
+                    opponentProp++
+                ) {
+                    // Skip if an opponent doesn't own this property
+                    if (
+                        this.props[opponentProp].owner === null ||
+                        this.props[opponentProp].owner ===
+                            this.board.currentPlayerIndex
+                    ) {
+                        continue;
+                    }
+
+                    // Swap properties
+                    const newState = this.clone();
+                    [
+                        newState.props[myProp].owner,
+                        newState.props[opponentProp].owner
+                    ] = [
+                        newState.props[opponentProp].owner,
+                        newState.props[myProp].owner
+                    ];
+
+                    children.push(newState);
+                }
+            }
+
+            return children.length ? children : [this.clone()];
         },
         sendOpponentToJail: (): GameState[] => {
             const children: GameState[] = [];
