@@ -1,7 +1,14 @@
 import clone from 'just-clone';
 import { assert } from './helpers';
 import { significantRolls, singleProbability } from './precalculatedRolls';
-import { Player, Board, DiceRoll, Property, chanceCard } from './types';
+import {
+    Player,
+    Board,
+    DiceRoll,
+    Property,
+    chanceCard,
+    PropertyColor
+} from './types';
 
 const positions = {
     properties: [
@@ -202,7 +209,9 @@ export class GameState {
         // Chance cards that require the player to make a choice
         const choicefulChanceCards: [number, chanceCard][] = [
             [3, 'rentLvlTo1'],
-            [1, 'rentLvlTo5']
+            [1, 'rentLvlTo5'],
+            [3, 'rentLvlIncForSet'],
+            [1, 'rentLvlDecForSet']
         ];
 
         // Push the child states for all the choiceful chance cards
@@ -415,52 +424,82 @@ export class GameState {
         return children;
     }
 
+    chanceCardsConstructor = {
+        rentLvlToX: (setTo: 1 | 5): GameState[] => {
+            const children: GameState[] = [];
+
+            for (let i in this.board.properties) {
+                const rentLevel = this.board.properties[i].rentLevel;
+
+                // Don't need to add another child node if the rent level is already at its max/min
+                if (rentLevel !== null && rentLevel !== setTo) {
+                    const child = this.clone();
+                    child.board.properties[i].rentLevel = setTo;
+                    children.push(child);
+                }
+            }
+
+            return children.length ? children : [this.clone()];
+        },
+
+        rentLvlChangeForSet: (change: 1 | -1): GameState[] => {
+            const children: GameState[] = [];
+
+            const propsBySet: Record<PropertyColor, string[]> = {
+                brown: [],
+                lightBlue: [],
+                pink: [],
+                orange: [],
+                red: [],
+                yellow: [],
+                green: [],
+                blue: []
+            };
+
+            // Sort all the properties by their color set
+            for (const key in this.board.properties) {
+                propsBySet[this.board.properties[key].color].push(key);
+            }
+
+            // Choices that the player can make
+            for (const color in propsBySet) {
+                const newState = this.clone();
+                let hasEffect = false;
+
+                // Increase the rent level of each property in the color set
+                // @ts-ignore
+                for (const pos of propsBySet[color]) {
+                    const prop = newState.board.properties[pos];
+                    if (
+                        prop.rentLevel !== null &&
+                        prop.rentLevel !== (change === 1 ? 5 : 1)
+                    ) {
+                        prop.rentLevel += change;
+                        hasEffect = true;
+                    }
+                }
+
+                // Only push the new state if it's actually different
+                if (hasEffect) children.push(newState);
+            }
+
+            return children.length ? children : [this.clone()];
+        }
+    };
+
     /**
      * Effects of the chance cards that require the player to make a choice.
      * This is an object because namespaces don't work in classes.
      */
     chanceCards: Record<chanceCard, () => GameState[]> = {
-        rentLvlTo1: (): GameState[] => {
-            const children: GameState[] = [];
-
-            for (let i in this.board.properties) {
-                const rentLevel = this.board.properties[i].rentLevel;
-
-                // Don't need to add another child node if the rent level is already 1
-                if (rentLevel !== null && rentLevel > 1) {
-                    const child = this.clone();
-                    child.board.properties[i].rentLevel = 1;
-                    children.push(child);
-                }
-            }
-
-            return children.length ? children : [this.clone()];
-        },
-
-        rentLvlTo5: (): GameState[] => {
-            const children: GameState[] = [];
-
-            for (let i in this.board.properties) {
-                const rentLevel = this.board.properties[i].rentLevel;
-
-                // Don't need to add another child node if the rent level is already 5
-                if (rentLevel !== null && rentLevel < 5) {
-                    const child = this.clone();
-                    child.board.properties[i].rentLevel = 5;
-                    children.push(child);
-                }
-            }
-
-            return children.length ? children : [this.clone()];
-        },
-
-        rentLvlIncForSet: (): GameState[] => {
-            return [];
-        },
-
-        rentLvlDecForSet: (): GameState[] => {
-            return [];
-        },
+        rentLvlTo1: (): GameState[] =>
+            this.chanceCardsConstructor.rentLvlToX(1),
+        rentLvlTo5: (): GameState[] =>
+            this.chanceCardsConstructor.rentLvlToX(5),
+        rentLvlIncForSet: (): GameState[] =>
+            this.chanceCardsConstructor.rentLvlChangeForSet(1),
+        rentLvlDecForSet: (): GameState[] =>
+            this.chanceCardsConstructor.rentLvlChangeForSet(-1),
 
         rentLvlIncForBoardSide: (): GameState[] => {
             return [];

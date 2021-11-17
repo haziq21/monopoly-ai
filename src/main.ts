@@ -10,9 +10,9 @@ let game = new GameState(players, {
     properties: {
         1: PropertyFactory('brown', 60, [70, 130, 220, 370, 750]),
         3: PropertyFactory('brown', 60, [70, 130, 220, 370, 750]),
-        5: PropertyFactory('light blue', 100, [80, 140, 240, 410, 800]),
-        6: PropertyFactory('light blue', 100, [80, 140, 240, 410, 800]),
-        8: PropertyFactory('light blue', 120, [100, 160, 260, 440, 860]),
+        5: PropertyFactory('lightBlue', 100, [80, 140, 240, 410, 800]),
+        6: PropertyFactory('lightBlue', 100, [80, 140, 240, 410, 800]),
+        8: PropertyFactory('lightBlue', 120, [100, 160, 260, 440, 860]),
         10: PropertyFactory('pink', 140, [110, 180, 290, 460, 900]),
         12: PropertyFactory('pink', 140, [110, 180, 290, 460, 900]),
         13: PropertyFactory('pink', 160, [130, 200, 310, 490, 980]),
@@ -42,7 +42,7 @@ let game = new GameState(players, {
 //     game = children[Math.round(Math.random() * (children.length - 1))];
 // }
 
-game = game.getChildren()[2];
+game = game.getChildren()[26];
 const children = game.getChildren();
 
 console.log(children.map((c) => c.toString()).join('\n'));

@@ -8,7 +8,7 @@ export interface DiceRoll {
 /** The color of a property. */
 export type PropertyColor =
     | 'brown'
-    | 'light blue'
+    | 'lightBlue'
     | 'pink'
     | 'orange'
     | 'red'
