@@ -105,16 +105,18 @@ export class GameState {
     }
 
     /**
-     * Send the current player to jail. Modifies the
-     * current player object and the current player index.
+     * Send a player to jail (the player defaults to the current player).
+     * Modifies the player object and the current player index.
      */
-    sendToJail(): void {
+    sendToJail(playerIndex: number = -1): void {
+        if (playerIndex === -1) playerIndex = this.board.currentPlayerIndex;
+
         // Set current player's position to jail
-        this.players[this.board.currentPlayerIndex].position = 9;
-        this.players[this.board.currentPlayerIndex].inJail = true;
+        this.players[playerIndex].position = 9;
+        this.players[playerIndex].inJail = true;
 
         // Reset doubles counter
-        this.players[this.board.currentPlayerIndex].doublesRolled = 0;
+        this.players[playerIndex].doublesRolled = 0;
 
         // It's the next player's turn now
         this.nextPlayer();
@@ -650,10 +652,37 @@ export class GameState {
             return [];
         },
         sendOpponentToJail: (): GameState[] => {
-            return [];
+            const children: GameState[] = [];
+
+            for (let i = 0; i < this.players.length; i++) {
+                // Skip the current player
+                if (i === this.board.currentPlayerIndex) continue;
+
+                // Send the opponent to jail
+                const newState = this.clone();
+                newState.sendToJail(i);
+
+                children.push(newState);
+            }
+
+            return children.length ? children : [this.clone()];
         },
         moveToAnyProperty: (): GameState[] => {
-            return [];
+            const children: GameState[] = [];
+
+            for (const prop of this.props) {
+                const newState = this.clone();
+
+                if (newState.currentPlayer.position !== prop.position) {
+                    // Move to the property
+                    newState.currentPlayer.position = prop.position;
+
+                    // Effects of landing on the property
+                    children.push(...newState.getPropertyChoiceEffects());
+                }
+            }
+
+            return children.length ? children : [this.clone()];
         }
     };
 
