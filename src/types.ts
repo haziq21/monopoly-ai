@@ -26,7 +26,17 @@ export interface Property {
 }
 
 /** Every chance card */
-export type chanceCard = 'rentLevelTo1' | 'rentLevelTo5';
+export type chanceCard =
+    | 'rentLvlTo1'
+    | 'rentLvlTo5'
+    | 'rentLvlIncForSet'
+    | 'rentLvlDecForSet'
+    | 'rentLvlIncForBoardSide'
+    | 'rentLvlDecForBoardSide'
+    | 'rentLvlDecForNeighbours'
+    | 'swapProperty'
+    | 'sendOpponentToJail'
+    | 'moveToAnyProperty';
 
 /** The game board */
 export interface Board {

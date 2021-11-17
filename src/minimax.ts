@@ -201,8 +201,8 @@ export class GameState {
 
         // Chance cards that require the player to make a choice
         const choicefulChanceCards: [number, chanceCard][] = [
-            [3, 'rentLevelTo1'],
-            [1, 'rentLevelTo5']
+            [3, 'rentLvlTo1'],
+            [1, 'rentLvlTo5']
         ];
 
         // Push the child states for all the choiceful chance cards
@@ -420,7 +420,7 @@ export class GameState {
      * This is an object because namespaces don't work in classes.
      */
     chanceCards: Record<chanceCard, () => GameState[]> = {
-        rentLevelTo1: (): GameState[] => {
+        rentLvlTo1: (): GameState[] => {
             const children: GameState[] = [];
 
             for (let i in this.board.properties) {
@@ -437,22 +437,53 @@ export class GameState {
             return children.length ? children : [this.clone()];
         },
 
-        rentLevelTo5: (): GameState[] => {
+        rentLvlTo5: (): GameState[] => {
             const children: GameState[] = [];
-            const level5 = this.clone(1 / 21);
 
             for (let i in this.board.properties) {
                 const rentLevel = this.board.properties[i].rentLevel;
 
                 // Don't need to add another child node if the rent level is already 5
                 if (rentLevel !== null && rentLevel < 5) {
-                    const child = level5.clone();
+                    const child = this.clone();
                     child.board.properties[i].rentLevel = 5;
                     children.push(child);
                 }
             }
 
             return children.length ? children : [this.clone()];
+        },
+
+        rentLvlIncForSet: (): GameState[] => {
+            return [];
+        },
+
+        rentLvlDecForSet: (): GameState[] => {
+            return [];
+        },
+
+        rentLvlIncForBoardSide: (): GameState[] => {
+            return [];
+        },
+
+        rentLvlDecForBoardSide: (): GameState[] => {
+            return [];
+        },
+
+        rentLvlDecForNeighbours: (): GameState[] => {
+            return [];
+        },
+
+        swapProperty: (): GameState[] => {
+            return [];
+        },
+
+        sendOpponentToJail: (): GameState[] => {
+            return [];
+        },
+
+        moveToAnyProperty: (): GameState[] => {
+            return [];
         }
     };
 
