@@ -236,7 +236,8 @@ export class GameState {
             [1, 'rentLvlDecForSet'],
             [1, 'rentLvlIncForBoardSide'],
             [1, 'rentLvlDecForBoardSide'],
-            [2, 'rentLvlDecForNeighbours']
+            [2, 'rentLvlDecForNeighbours'],
+            [2, 'bonusForYouAndOpponent']
         ];
 
         // Push the child states for all the choiceful chance cards
@@ -573,53 +574,74 @@ export class GameState {
             const children: GameState[] = [];
 
             for (let i = 0; i < this.props.length; i++) {
-                if (this.props[i].owner === this.board.currentPlayerIndex) {
-                    if (this.props[i].rentLevel === null) continue;
-
-                    const nextState = this.clone();
-                    let hasEffect = false;
-
-                    // Increment this property's rent level...
-                    if (nextState.props[i].rentLevel! < 5) {
-                        nextState.props[i].rentLevel! += 1;
-                        hasEffect = true;
-                    }
-
-                    // ...and decrease neighbours' rent level:
-
-                    // Neighbour to the clockwise direction
-                    const clockwiseNeighbour = nextState.props[(i + 1) % 36];
-
-                    // Decrement the rent level but clamp it to 1
-                    if (
-                        clockwiseNeighbour.rentLevel !== null &&
-                        clockwiseNeighbour.rentLevel > 1
-                    ) {
-                        clockwiseNeighbour.rentLevel -= 1;
-                        hasEffect = true;
-                    }
-
-                    // Neighbour to the anti-clockwise direction
-                    let antiClockwiseNeighbour: Property;
-                    if (i === 0) {
-                        antiClockwiseNeighbour =
-                            nextState.props[nextState.props.length - 1];
-                    } else {
-                        antiClockwiseNeighbour = nextState.props[i - 1];
-                    }
-
-                    // Decrement the rent level but clamp it to 1
-                    if (
-                        antiClockwiseNeighbour.rentLevel !== null &&
-                        antiClockwiseNeighbour.rentLevel > 1
-                    ) {
-                        antiClockwiseNeighbour.rentLevel -= 1;
-                        hasEffect = true;
-                    }
-
-                    // Push this new state if it's different
-                    if (hasEffect) children.push(nextState);
+                // Skip if this property isn't owned by the current player
+                if (this.props[i].owner !== this.board.currentPlayerIndex) {
+                    continue;
                 }
+
+                const nextState = this.clone();
+                let hasEffect = false;
+
+                // Increment this property's rent level...
+                if (nextState.props[i].rentLevel! < 5) {
+                    nextState.props[i].rentLevel! += 1;
+                    hasEffect = true;
+                }
+
+                // ...and decrement the neighbours' rent levels:
+
+                // Neighbour to the clockwise direction
+                const clockwiseNeighbour = nextState.props[(i + 1) % 36];
+
+                // Decrement the rent level but clamp it to 1
+                if (
+                    clockwiseNeighbour.rentLevel !== null &&
+                    clockwiseNeighbour.rentLevel > 1
+                ) {
+                    clockwiseNeighbour.rentLevel -= 1;
+                    hasEffect = true;
+                }
+
+                // Neighbour to the anti-clockwise direction
+                let antiClockwiseNeighbour: Property;
+                if (i === 0) {
+                    antiClockwiseNeighbour =
+                        nextState.props[nextState.props.length - 1];
+                } else {
+                    antiClockwiseNeighbour = nextState.props[i - 1];
+                }
+
+                // Decrement the rent level but clamp it to 1
+                if (
+                    antiClockwiseNeighbour.rentLevel !== null &&
+                    antiClockwiseNeighbour.rentLevel > 1
+                ) {
+                    antiClockwiseNeighbour.rentLevel -= 1;
+                    hasEffect = true;
+                }
+
+                // Push this new state if it's different
+                if (hasEffect) children.push(nextState);
+            }
+
+            return children.length ? children : [this.clone()];
+        },
+        bonusForYouAndOpponent: (): GameState[] => {
+            const children: GameState[] = [];
+
+            for (let i = 0; i < this.players.length; i++) {
+                // Skip the current player
+                if (i === this.board.currentPlayerIndex) continue;
+
+                const newState = this.clone();
+
+                // Award $200 bonus to this player
+                newState.currentPlayer.balance += 200;
+
+                // Award $200 bonus to an opponent
+                newState.players[i].balance += 200;
+
+                children.push(newState);
             }
 
             return children.length ? children : [this.clone()];

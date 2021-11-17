@@ -26,7 +26,7 @@ export interface Property {
     owner: number | null;
 }
 
-/** Every chance card */
+/** Every chance card that requires the player to make a choice. */
 export type chanceCard =
     | 'rentLvlTo1'
     | 'rentLvlTo5'
@@ -35,6 +35,7 @@ export type chanceCard =
     | 'rentLvlIncForBoardSide'
     | 'rentLvlDecForBoardSide'
     | 'rentLvlDecForNeighbours'
+    | 'bonusForYouAndOpponent'
     | 'swapProperty'
     | 'sendOpponentToJail'
     | 'moveToAnyProperty';
