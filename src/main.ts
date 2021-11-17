@@ -42,7 +42,7 @@ let game = new GameState(players, {
 //     game = children[Math.round(Math.random() * (children.length - 1))];
 // }
 
-game = game.getChildren()[26];
+game = game.getChildren()[36];
 const children = game.getChildren();
 
 console.log(children.map((c) => c.toString()).join('\n'));

@@ -211,7 +211,9 @@ export class GameState {
             [3, 'rentLvlTo1'],
             [1, 'rentLvlTo5'],
             [3, 'rentLvlIncForSet'],
-            [1, 'rentLvlDecForSet']
+            [1, 'rentLvlDecForSet'],
+            [1, 'rentLvlIncForBoardSide'],
+            [1, 'rentLvlDecForBoardSide']
         ];
 
         // Push the child states for all the choiceful chance cards
@@ -484,6 +486,40 @@ export class GameState {
             }
 
             return children.length ? children : [this.clone()];
+        },
+
+        rentLvlChangeForBoardSide: (change: 1 | -1): GameState[] => {
+            const children: GameState[] = [];
+
+            // Loop through each side of the board
+            for (let i = 0; i < 4; i++) {
+                const newState = this.clone();
+                let hasEffect = false;
+
+                // Loop through the properties to get only the relevant ones
+                for (const pos in newState.board.properties) {
+                    const posInt = parseInt(pos);
+
+                    // `posInt` (the current property's position on the board)
+                    // is on the `i`th side of the board (going clockwise)
+                    if (i * 9 < posInt && posInt < (i + 1) * 9) {
+                        const relevantProp = newState.board.properties[pos];
+
+                        if (
+                            relevantProp.rentLevel !== null &&
+                            relevantProp.rentLevel !== (change === 1 ? 5 : 1)
+                        ) {
+                            relevantProp.rentLevel += change;
+                            hasEffect = true;
+                        }
+                    }
+                }
+
+                // Only push a new child if it was different
+                if (hasEffect) children.push(newState);
+            }
+
+            return children.length ? children : [this.clone()];
         }
     };
 
@@ -500,14 +536,10 @@ export class GameState {
             this.chanceCardsConstructor.rentLvlChangeForSet(1),
         rentLvlDecForSet: (): GameState[] =>
             this.chanceCardsConstructor.rentLvlChangeForSet(-1),
-
-        rentLvlIncForBoardSide: (): GameState[] => {
-            return [];
-        },
-
-        rentLvlDecForBoardSide: (): GameState[] => {
-            return [];
-        },
+        rentLvlIncForBoardSide: (): GameState[] =>
+            this.chanceCardsConstructor.rentLvlChangeForBoardSide(1),
+        rentLvlDecForBoardSide: (): GameState[] =>
+            this.chanceCardsConstructor.rentLvlChangeForBoardSide(-1),
 
         rentLvlDecForNeighbours: (): GameState[] => {
             return [];
