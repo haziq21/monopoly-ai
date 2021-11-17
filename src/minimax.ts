@@ -44,8 +44,10 @@ export class GameState {
     }
 
     /** The property which the current player is on. */
-    get currentProperty(): Property {
-        return this.board.properties[this.currentPlayer.position];
+    get currentProperty(): Property | undefined {
+        return this.board.properties.find(
+            (prop) => prop.position === this.currentPlayer.position
+        );
     }
 
     /**
@@ -170,11 +172,8 @@ export class GameState {
         let propertyPenaltyIsDifferent = false;
 
         // Deduct $50 per property owned
-        for (let i in propertyPenalty.board.properties) {
-            if (
-                propertyPenalty.board.properties[i].owner ===
-                propertyPenalty.board.currentPlayerIndex
-            ) {
+        for (let prop of propertyPenalty.board.properties) {
+            if (prop.owner === propertyPenalty.board.currentPlayerIndex) {
                 propertyPenalty.currentPlayer.balance -= 50;
                 propertyPenaltyIsDifferent = true;
             }
@@ -360,25 +359,27 @@ export class GameState {
 
     getPropertyChoiceEffects(): GameState[] {
         // The player can choose to buy the property
-        if (this.currentProperty.owner === null) {
+        if (this.currentProperty!.owner === null) {
             // Choose not to buy this property
             const noBuy = this.clone();
             // TODO: Implement auctioning
 
             // Choose to buy this property
             const buyProp = this.clone();
-            buyProp.currentProperty.owner = buyProp.board.currentPlayerIndex;
-            buyProp.currentProperty.rentLevel = 1;
-            buyProp.currentPlayer.balance -= buyProp.currentProperty.price;
+            buyProp.currentProperty!.owner = buyProp.board.currentPlayerIndex;
+            buyProp.currentProperty!.rentLevel = 1;
+            buyProp.currentPlayer.balance -= buyProp.currentProperty!.price;
 
             return [noBuy, buyProp];
         }
         // The rent level increases because the property is owned by this player
-        else if (this.currentProperty.owner === this.board.currentPlayerIndex) {
+        else if (
+            this.currentProperty!.owner === this.board.currentPlayerIndex
+        ) {
             const newState = this.clone();
 
-            newState.currentProperty.rentLevel = Math.min(
-                newState.currentProperty.rentLevel! + 1,
+            newState.currentProperty!.rentLevel = Math.min(
+                newState.currentProperty!.rentLevel! + 1,
                 5
             );
 
@@ -389,20 +390,20 @@ export class GameState {
             const newState = this.clone();
 
             const balanceDue =
-                newState.currentProperty.rents[
-                    newState.currentProperty.rentLevel!
+                newState.currentProperty!.rents[
+                    newState.currentProperty!.rentLevel!
                 ];
 
             // Pay the owner...
-            newState.players[newState.currentProperty.owner!].balance +=
+            newState.players[newState.currentProperty!.owner!].balance +=
                 balanceDue;
 
             // ...using the current player's money
             newState.currentPlayer.balance -= balanceDue;
 
             // Then increase the rent level
-            newState.currentProperty.rentLevel = Math.min(
-                newState.currentProperty.rentLevel! + 1,
+            newState.currentProperty!.rentLevel = Math.min(
+                newState.currentProperty!.rentLevel! + 1,
                 5
             );
 
@@ -435,7 +436,7 @@ export class GameState {
         rentLvlToX: (setTo: 1 | 5): GameState[] => {
             const children: GameState[] = [];
 
-            for (let i in this.board.properties) {
+            for (let i = 0; i < this.board.properties.length; i++) {
                 const rentLevel = this.board.properties[i].rentLevel;
 
                 // Don't need to add another child node if the rent level is already at its max/min
@@ -452,7 +453,8 @@ export class GameState {
         rentLvlChangeForSet: (change: 1 | -1): GameState[] => {
             const children: GameState[] = [];
 
-            const propsByColor: Record<PropertyColor, string[]> = {
+            // The indexes of each property in `this.board.properties`, sorted by the color of the property
+            const propsByColor: Record<PropertyColor, number[]> = {
                 brown: [],
                 lightBlue: [],
                 pink: [],
@@ -464,8 +466,8 @@ export class GameState {
             };
 
             // Sort all the properties by their color set
-            for (const key in this.board.properties) {
-                propsByColor[this.board.properties[key].color].push(key);
+            for (let i = 0; i < this.board.properties.length; i++) {
+                propsByColor[this.board.properties[i].color].push(i);
             }
 
             // Choices that the player can make
@@ -475,8 +477,8 @@ export class GameState {
 
                 // Increase the rent level of each property in the color set
                 // @ts-ignore
-                for (const pos of propsByColor[color]) {
-                    const prop = newState.board.properties[pos];
+                for (const index of propsByColor[color]) {
+                    const prop = newState.board.properties[index];
                     if (
                         prop.rentLevel !== null &&
                         prop.rentLevel !== (change === 1 ? 5 : 1)
@@ -497,18 +499,18 @@ export class GameState {
             const children: GameState[] = [];
 
             // Loop through each side of the board
-            for (let i = 0; i < 4; i++) {
+            for (let boardSide = 0; boardSide < 4; boardSide++) {
                 const newState = this.clone();
                 let hasEffect = false;
 
                 // Loop through the properties to get only the relevant ones
-                for (const pos in newState.board.properties) {
-                    const posInt = parseInt(pos);
+                for (let p = 0; p < newState.board.properties.length; p++) {
+                    const pos = newState.board.properties[p].position;
 
                     // `posInt` (the current property's position on the board)
                     // is on the `i`th side of the board (going clockwise)
-                    if (i * 9 < posInt && posInt < (i + 1) * 9) {
-                        const relevantProp = newState.board.properties[pos];
+                    if (boardSide * 9 < pos && pos < (boardSide + 1) * 9) {
+                        const relevantProp = newState.board.properties[p];
 
                         if (
                             relevantProp.rentLevel !== null &&

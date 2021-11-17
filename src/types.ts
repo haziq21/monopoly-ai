@@ -18,6 +18,7 @@ export type PropertyColor =
 
 /** A property tile on the game board */
 export interface Property {
+    position: number;
     color: PropertyColor;
     price: number;
     rents: number[];
@@ -40,7 +41,7 @@ export type chanceCard =
 
 /** The game board */
 export interface Board {
-    properties: Record<number, Property>;
+    properties: Property[];
     currentPlayerIndex: number;
     nextMoveIsChance: boolean;
     activeChanceCard: null | chanceCard;

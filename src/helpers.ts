@@ -47,16 +47,11 @@ export function MakePlayers(
 }
 
 export function PropertyFactory(
+    position: number,
     color: PropertyColor,
     price: number,
     rents: number[]
 ): Property {
     // Construct a property tile
-    return {
-        color,
-        price,
-        rents,
-        rentLevel: null,
-        owner: null
-    };
+    return { position, color, price, rents, rentLevel: null, owner: null };
 }
