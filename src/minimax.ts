@@ -426,7 +426,12 @@ export class GameState {
         return children;
     }
 
-    chanceCardsConstructor = {
+    // This object is only used in `this.getChanceCardEffects()` but is written here to provide
+    // reusable functions for the chance cards that have similar but opposite effects (e.g. "set
+    // rent level of a property to 1" and "set rent level of a property to 5"). This is an object
+    // because namespaces don't work in classes.
+    /** Effects of the chance cards that require the player to make a choice. */
+    chanceCardEffects = {
         rentLvlToX: (setTo: 1 | 5): GameState[] => {
             const children: GameState[] = [];
 
@@ -447,7 +452,7 @@ export class GameState {
         rentLvlChangeForSet: (change: 1 | -1): GameState[] => {
             const children: GameState[] = [];
 
-            const propsBySet: Record<PropertyColor, string[]> = {
+            const propsByColor: Record<PropertyColor, string[]> = {
                 brown: [],
                 lightBlue: [],
                 pink: [],
@@ -460,17 +465,17 @@ export class GameState {
 
             // Sort all the properties by their color set
             for (const key in this.board.properties) {
-                propsBySet[this.board.properties[key].color].push(key);
+                propsByColor[this.board.properties[key].color].push(key);
             }
 
             // Choices that the player can make
-            for (const color in propsBySet) {
+            for (const color in propsByColor) {
                 const newState = this.clone();
                 let hasEffect = false;
 
                 // Increase the rent level of each property in the color set
                 // @ts-ignore
-                for (const pos of propsBySet[color]) {
+                for (const pos of propsByColor[color]) {
                     const prop = newState.board.properties[pos];
                     if (
                         prop.rentLevel !== null &&
@@ -523,44 +528,42 @@ export class GameState {
         }
     };
 
-    /**
-     * Effects of the chance cards that require the player to make a choice.
-     * This is an object because namespaces don't work in classes.
-     */
-    chanceCards: Record<chanceCard, () => GameState[]> = {
-        rentLvlTo1: (): GameState[] =>
-            this.chanceCardsConstructor.rentLvlToX(1),
-        rentLvlTo5: (): GameState[] =>
-            this.chanceCardsConstructor.rentLvlToX(5),
-        rentLvlIncForSet: (): GameState[] =>
-            this.chanceCardsConstructor.rentLvlChangeForSet(1),
-        rentLvlDecForSet: (): GameState[] =>
-            this.chanceCardsConstructor.rentLvlChangeForSet(-1),
-        rentLvlIncForBoardSide: (): GameState[] =>
-            this.chanceCardsConstructor.rentLvlChangeForBoardSide(1),
-        rentLvlDecForBoardSide: (): GameState[] =>
-            this.chanceCardsConstructor.rentLvlChangeForBoardSide(-1),
-
-        rentLvlDecForNeighbours: (): GameState[] => {
-            return [];
-        },
-
-        swapProperty: (): GameState[] => {
-            return [];
-        },
-
-        sendOpponentToJail: (): GameState[] => {
-            return [];
-        },
-
-        moveToAnyProperty: (): GameState[] => {
-            return [];
-        }
-    };
-
     getChanceCardEffects(): GameState[] {
         // Get child states according to currently active chance card
-        const children = this.chanceCards[this.board.activeChanceCard!]();
+        const children = {
+            rentLvlTo1: (): GameState[] => this.chanceCardEffects.rentLvlToX(1),
+
+            rentLvlTo5: (): GameState[] => this.chanceCardEffects.rentLvlToX(5),
+
+            rentLvlIncForSet: (): GameState[] =>
+                this.chanceCardEffects.rentLvlChangeForSet(1),
+
+            rentLvlDecForSet: (): GameState[] =>
+                this.chanceCardEffects.rentLvlChangeForSet(-1),
+
+            rentLvlIncForBoardSide: (): GameState[] =>
+                this.chanceCardEffects.rentLvlChangeForBoardSide(1),
+
+            rentLvlDecForBoardSide: (): GameState[] =>
+                this.chanceCardEffects.rentLvlChangeForBoardSide(-1),
+
+            rentLvlDecForNeighbours: (): GameState[] => {
+                return [];
+            },
+
+            swapProperty: (): GameState[] => {
+                return [];
+            },
+
+            sendOpponentToJail: (): GameState[] => {
+                return [];
+            },
+
+            moveToAnyProperty: (): GameState[] => {
+                return [];
+            }
+        }[this.board.activeChanceCard!]();
+
         // Reset active chance card
         children.forEach((c) => (c.board.activeChanceCard = null));
 
@@ -582,7 +585,7 @@ export class GameState {
         else if (positions.chanceCards.includes(this.currentPlayer.position)) {
             children = this.getChanceCardEffects();
         }
-        // TODO: Implement the rest
+        // The player landed on one of the corners
         else {
             let child = this.clone();
             child.nextPlayer();
@@ -605,25 +608,35 @@ export class GameState {
             : this.getChoiceEffects();
     }
 
+    /** Get a pretty string representing the current game state. */
     toString(): string {
-        const probabilityStr =
-            this.probability !== null
-                ? (this.probability * 100).toFixed(2) + '%'
-                : 'null';
-        const activeChanceCard = `Active CC: ${this.board.activeChanceCard}\n`;
-        const nextMove = this.board.nextMoveIsChance ? 'chance' : 'choice';
-        const playerStrTemplate = (p: Player) =>
-            this.currentPlayer === p
-                ? `${String(p)} < next (\x1b[36m${nextMove}\x1b[0m)`
-                : `${String(p)}`;
-        const playersStr = this.players.map(playerStrTemplate).join('\n');
-
-        let finalStr = `\nProbability: \x1b[33m${probabilityStr}\x1b[0m\n`;
-        if (this.board.activeChanceCard) {
-            finalStr += activeChanceCard;
+        // E.g.: "5.56%" or "null"
+        let probabilityStr: String;
+        if (this.probability !== null) {
+            probabilityStr = (this.probability * 100).toFixed(2) + '%';
+        } else {
+            probabilityStr = 'null';
         }
-        finalStr += playersStr;
 
-        return finalStr;
+        const nextMove = this.board.nextMoveIsChance ? 'chance' : 'choice';
+
+        const playersStr = this.players
+            .map((p: Player) => {
+                if (this.currentPlayer === p) {
+                    return `${String(p)} < next (\x1b[36m${nextMove}\x1b[0m)`;
+                } else {
+                    return String(p);
+                }
+            })
+            .join('\n');
+
+        // E.g.: "Probability: 5.56%"
+        let metadataStr = `\nProbability: \x1b[33m${probabilityStr}\x1b[0m\n`;
+        if (this.board.activeChanceCard) {
+            // E.g.: "Active CC: rentLvlTo5"
+            metadataStr += `Active CC: ${this.board.activeChanceCard}\n`;
+        }
+
+        return metadataStr + playersStr;
     }
 }
