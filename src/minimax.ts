@@ -1,5 +1,4 @@
 import clone from 'just-clone';
-import { assert } from './helpers';
 import { significantRolls, singleProbability } from './precalculatedRolls';
 import {
     Player,
@@ -10,6 +9,12 @@ import {
     PropertyColor
 } from './types';
 
+// Note: 'CC' is commonly used here as an abbreviation for 'chance card'.
+
+/**
+ * Positions of various tile types on the board.
+ * 'Go' is at 0 and 'Mayfair' (the last property) is at 35.
+ */
 const positions = {
     properties: [
         1, 3, 5, 6, 8, 10, 12, 13, 14, 15, 17, 19, 21, 22, 23, 24, 26, 28, 30,
@@ -22,10 +27,11 @@ const positions = {
 export class GameState {
     players: Player[];
     board: Board;
+    /**
+     * The probability of arriving at this state in the case that this state was achieved
+     * by a dice roll, or `null` if it was achieved by a choice made by a player.
+     */
     probability: number | null;
-
-    // minimax: () => number[];
-    // staticEvaluation: () => number[];
 
     /** Produce a game state, or a node on the game tree */
     constructor(
@@ -38,6 +44,8 @@ export class GameState {
         this.probability = probability;
     }
 
+    //==========    Aliases (for convenience)    ==========//
+
     /** The player whose turn it currently is. */
     get currentPlayer(): Player {
         return this.players[this.board.currentPlayerIndex];
@@ -45,10 +53,17 @@ export class GameState {
 
     /** The property which the current player is on. */
     get currentProperty(): Property | undefined {
-        return this.board.properties.find(
+        return this.props.find(
             (prop) => prop.position === this.currentPlayer.position
         );
     }
+
+    /** The properties on the game board. */
+    get props(): Property[] {
+        return this.board.properties;
+    }
+
+    //==========    Helper functions    ==========//
 
     /**
      * Move the current player by the specified amount of tiles.
@@ -68,16 +83,17 @@ export class GameState {
             this.currentPlayer.balance += 200;
         }
 
+        // Update the position
         this.currentPlayer.position = newPosition;
     }
 
     /**
-     * Changes the `currentPlayerIndex` to the index of the
-     * player whose turn it is next, but only if the current
-     * player didn't roll doubles (in which case it would be
-     * their turn again).
+     * Changes the `currentPlayerIndex` to the index of the player
+     * whose turn it is next, but only if the current player didn't
+     * roll doubles (in which case it would be their turn again).
      */
     nextPlayer(): void {
+        // This player didn't roll doubles in their previous turn
         if (this.currentPlayer.doublesRolled === 0) {
             // Change the currentPlayer index to the index of the next player
             this.board.currentPlayerIndex =
@@ -113,20 +129,25 @@ export class GameState {
         );
     }
 
-    /** Roll either `tries` times or until we get a double, whichever comes first. */
+    /**
+     * Roll either `tries` times or until a double is achieved
+     * (whichever comes first) then return all the possible results of this.
+     */
     static rollForDoubles(tries: number): DiceRoll[] {
         /* 
         Let P(S) be the probability that a double is not attained in one roll.
-        Let P(r) be the probability of obtaining this specific dice configuration `r` after one roll.
-        The return value of `significantRolls()` demonstrates all possible "specific dice configurations".
+        Let P(r) be the probability of obtaining a specific dice configuration 
+        `r` after one roll. The return value of `significantRolls` demonstrates 
+        all possible "specific dice configurations".
 
         When rolling the dice for maximum of `n` times, or stopping
         when we get doubles, the probabilities work out as follows:
 
-        The probability of the final roll being any double `d` (where the sum
+        The probability of the final roll `r` being any double `d` (where the sum
         of the dice is `2d`) is given by `sum_(i=0)^(n-1) P(r) * P(S)^i`.
         
-        The probability of all `n` rolls being non-doubles is given by `P(r) * P(S)^(n - 1)`.
+        The probability of all `n` rolls being non-doubles (and hence the
+        final roll being a non-double `r`) is given by `P(r) * P(S)^(n - 1)`.
         
         The following code implements this.
         */
@@ -160,11 +181,13 @@ export class GameState {
         });
     }
 
+    //==========    Probability tree generation    ==========//
+
     /**
      * Get child nodes of the current game state that can be
      * reached by rolling to a chance card tile.
      */
-    getRollToChanceCardEffects(): [GameState[], number] {
+    getEffectsOfRollingToCC(): [GameState[], number] {
         const children: GameState[] = [];
 
         // Chance card: -$50 per property owned
@@ -172,7 +195,7 @@ export class GameState {
         let propertyPenaltyIsDifferent = false;
 
         // Deduct $50 per property owned
-        for (let prop of propertyPenalty.board.properties) {
+        for (let prop of propertyPenalty.props) {
             if (prop.owner === propertyPenalty.board.currentPlayerIndex) {
                 propertyPenalty.currentPlayer.balance -= 50;
                 propertyPenaltyIsDifferent = true;
@@ -212,7 +235,8 @@ export class GameState {
             [3, 'rentLvlIncForSet'],
             [1, 'rentLvlDecForSet'],
             [1, 'rentLvlIncForBoardSide'],
-            [1, 'rentLvlDecForBoardSide']
+            [1, 'rentLvlDecForBoardSide'],
+            [2, 'rentLvlDecForNeighbours']
         ];
 
         // Push the child states for all the choiceful chance cards
@@ -244,21 +268,19 @@ export class GameState {
             const doubleProbabilities = GameState.rollForDoubles(3);
 
             // Loop through all possible dice results
-            for (let dbl = 0; dbl < doubleProbabilities.length; dbl++) {
+            for (let roll of doubleProbabilities) {
                 // Derive a new game state from the current game state
-                const newState = this.clone(
-                    doubleProbabilities[dbl].probability
-                );
+                const newState = this.clone(roll.probability);
 
                 // Update the current player's position
-                newState.moveBy(doubleProbabilities[dbl].sum);
+                newState.moveBy(roll.sum);
                 // Now the player has to do something according to the tile they're on
                 newState.board.nextMoveIsChance = false;
 
                 // TODO: Refactor this to compress possibilities of choice-less chance cards
 
                 // We didn't manage to roll doubles
-                if (doubleProbabilities[dbl].doubles === null) {
+                if (roll.doubles === null) {
                     // $100 penalty for not rolling doubles
                     newState.currentPlayer.balance -= 100;
                 }
@@ -271,19 +293,19 @@ export class GameState {
         // Otherwise, play as normal
         else {
             // Loop through all possible dice results
-            for (let i = 0; i < significantRolls.length; i++) {
+            for (let roll of significantRolls) {
                 // Derive a new game state from the current game state
-                const nextState = this.clone(significantRolls[i].probability);
+                const nextState = this.clone(roll.probability);
 
                 // Update the current player's position
-                nextState.moveBy(significantRolls[i].sum);
+                nextState.moveBy(roll.sum);
 
                 // Check if the player landed on 'go to jail'
                 if (nextState.currentPlayer.position === 27) {
                     nextState.sendToJail();
                 }
                 // Check if this roll got doubles
-                else if (significantRolls[i].doubles !== null) {
+                else if (roll.doubles !== null) {
                     // Increment the doublesRolled counter
                     nextState.currentPlayer.doublesRolled += 1;
 
@@ -291,7 +313,9 @@ export class GameState {
                     if (nextState.currentPlayer.doublesRolled === 3) {
                         nextState.sendToJail();
                     }
-                } else {
+                }
+                // This was a normal turn
+                else {
                     // Reset doubles counter
                     nextState.currentPlayer.doublesRolled = 0;
                 }
@@ -303,7 +327,7 @@ export class GameState {
                     )
                 ) {
                     const [childStates, choicefulProbability] =
-                        nextState.getRollToChanceCardEffects();
+                        nextState.getEffectsOfRollingToCC();
                     children.push(...childStates);
                     nextState.probability = choicefulProbability;
                 } else {
@@ -328,7 +352,7 @@ export class GameState {
                 // sieve out / merge the players who moved to the exact same place with the
                 // exact same state using different means / methods.
                 JSON.stringify(gs.players[this.board.currentPlayerIndex]) +
-                JSON.stringify(gs.board.properties) +
+                JSON.stringify(gs.props) +
                 JSON.stringify(gs.board.activeChanceCard)
         );
 
@@ -343,10 +367,8 @@ export class GameState {
             (lastChild = children.pop()) !== undefined
         ) {
             if (lastId in seen) {
-                const temp: GameState = seen[lastId];
-
                 // Merge their probabilities
-                temp.probability! += lastChild.probability!;
+                seen[lastId]!.probability! += lastChild.probability!;
             } else {
                 // This is the first child encountered with this id
                 seen[lastId] = lastChild;
@@ -357,6 +379,10 @@ export class GameState {
         return Object.values(seen);
     }
 
+    /**
+     * Get child nodes of the current game state that
+     * can be reached by landing on a property tile.
+     */
     getPropertyChoiceEffects(): GameState[] {
         // The player can choose to buy the property
         if (this.currentProperty!.owner === null) {
@@ -411,14 +437,18 @@ export class GameState {
         }
     }
 
+    /**
+     * Get child nodes of the current game state that
+     * can be reached by landing on a location tile.
+     */
     getLocationChoiceEffects(): GameState[] {
         const children: GameState[] = [];
 
-        for (let i = 0; i < positions.properties.length; i++) {
+        for (let pos of positions.properties) {
             const newState = this.clone();
 
             // Player can teleport to any property on the board
-            newState.currentPlayer.position = positions.properties[i];
+            newState.currentPlayer.position = pos;
 
             // Effects of landing on the property
             children.push(...newState.getPropertyChoiceEffects());
@@ -427,22 +457,18 @@ export class GameState {
         return children;
     }
 
-    // This object is only used in `this.getChanceCardEffects()` but is written here to provide
-    // reusable functions for the chance cards that have similar but opposite effects (e.g. "set
-    // rent level of a property to 1" and "set rent level of a property to 5"). This is an object
-    // because namespaces don't work in classes.
-    /** Effects of the chance cards that require the player to make a choice. */
-    chanceCardEffects = {
+    // This is an object because namespaces don't work in classes.
+    ccEffectFactories = {
         rentLvlToX: (setTo: 1 | 5): GameState[] => {
             const children: GameState[] = [];
 
-            for (let i = 0; i < this.board.properties.length; i++) {
-                const rentLevel = this.board.properties[i].rentLevel;
+            for (let i = 0; i < this.props.length; i++) {
+                const rentLevel = this.props[i].rentLevel;
 
                 // Don't need to add another child node if the rent level is already at its max/min
                 if (rentLevel !== null && rentLevel !== setTo) {
                     const child = this.clone();
-                    child.board.properties[i].rentLevel = setTo;
+                    child.props[i].rentLevel = setTo;
                     children.push(child);
                 }
             }
@@ -453,7 +479,7 @@ export class GameState {
         rentLvlChangeForSet: (change: 1 | -1): GameState[] => {
             const children: GameState[] = [];
 
-            // The indexes of each property in `this.board.properties`, sorted by the color of the property
+            // The indexes of each property in `this.props`, sorted by the color of the property
             const propsByColor: Record<PropertyColor, number[]> = {
                 brown: [],
                 lightBlue: [],
@@ -466,8 +492,8 @@ export class GameState {
             };
 
             // Sort all the properties by their color set
-            for (let i = 0; i < this.board.properties.length; i++) {
-                propsByColor[this.board.properties[i].color].push(i);
+            for (let i = 0; i < this.props.length; i++) {
+                propsByColor[this.props[i].color].push(i);
             }
 
             // Choices that the player can make
@@ -478,7 +504,7 @@ export class GameState {
                 // Increase the rent level of each property in the color set
                 // @ts-ignore
                 for (const index of propsByColor[color]) {
-                    const prop = newState.board.properties[index];
+                    const prop = newState.props[index];
                     if (
                         prop.rentLevel !== null &&
                         prop.rentLevel !== (change === 1 ? 5 : 1)
@@ -504,13 +530,13 @@ export class GameState {
                 let hasEffect = false;
 
                 // Loop through the properties to get only the relevant ones
-                for (let p = 0; p < newState.board.properties.length; p++) {
-                    const pos = newState.board.properties[p].position;
+                for (let p = 0; p < newState.props.length; p++) {
+                    const pos = newState.props[p].position;
 
                     // `posInt` (the current property's position on the board)
                     // is on the `i`th side of the board (going clockwise)
                     if (boardSide * 9 < pos && pos < (boardSide + 1) * 9) {
-                        const relevantProp = newState.board.properties[p];
+                        const relevantProp = newState.props[p];
 
                         if (
                             relevantProp.rentLevel !== null &&
@@ -530,41 +556,88 @@ export class GameState {
         }
     };
 
-    getChanceCardEffects(): GameState[] {
-        // Get child states according to currently active chance card
-        const children = {
-            rentLvlTo1: (): GameState[] => this.chanceCardEffects.rentLvlToX(1),
+    /** Effects of the chance cards that require the player to make a choice. */
+    ccEffects: Record<chanceCard, () => GameState[]> = {
+        rentLvlTo1: (): GameState[] => this.ccEffectFactories.rentLvlToX(1),
+        rentLvlTo5: (): GameState[] => this.ccEffectFactories.rentLvlToX(5),
+        rentLvlIncForSet: (): GameState[] =>
+            this.ccEffectFactories.rentLvlChangeForSet(1),
+        rentLvlDecForSet: (): GameState[] =>
+            this.ccEffectFactories.rentLvlChangeForSet(-1),
+        rentLvlIncForBoardSide: (): GameState[] =>
+            this.ccEffectFactories.rentLvlChangeForBoardSide(1),
+        rentLvlDecForBoardSide: (): GameState[] =>
+            this.ccEffectFactories.rentLvlChangeForBoardSide(-1),
 
-            rentLvlTo5: (): GameState[] => this.chanceCardEffects.rentLvlToX(5),
+        rentLvlDecForNeighbours: (): GameState[] => {
+            const children: GameState[] = [];
 
-            rentLvlIncForSet: (): GameState[] =>
-                this.chanceCardEffects.rentLvlChangeForSet(1),
+            for (let i = 0; i < this.props.length; i++) {
+                if (this.props[i].owner === this.board.currentPlayerIndex) {
+                    if (this.props[i].rentLevel === null) continue;
 
-            rentLvlDecForSet: (): GameState[] =>
-                this.chanceCardEffects.rentLvlChangeForSet(-1),
+                    const nextState = this.clone();
+                    let hasEffect = false;
 
-            rentLvlIncForBoardSide: (): GameState[] =>
-                this.chanceCardEffects.rentLvlChangeForBoardSide(1),
+                    // Increment this property's rent level...
+                    if (nextState.props[i].rentLevel! < 5) {
+                        nextState.props[i].rentLevel! += 1;
+                        hasEffect = true;
+                    }
 
-            rentLvlDecForBoardSide: (): GameState[] =>
-                this.chanceCardEffects.rentLvlChangeForBoardSide(-1),
+                    // ...and decrease neighbours' rent level:
 
-            rentLvlDecForNeighbours: (): GameState[] => {
-                return [];
-            },
+                    // Neighbour to the clockwise direction
+                    const clockwiseNeighbour = nextState.props[(i + 1) % 36];
 
-            swapProperty: (): GameState[] => {
-                return [];
-            },
+                    // Decrement the rent level but clamp it to 1
+                    if (
+                        clockwiseNeighbour.rentLevel !== null &&
+                        clockwiseNeighbour.rentLevel > 1
+                    ) {
+                        clockwiseNeighbour.rentLevel -= 1;
+                        hasEffect = true;
+                    }
 
-            sendOpponentToJail: (): GameState[] => {
-                return [];
-            },
+                    // Neighbour to the anti-clockwise direction
+                    let antiClockwiseNeighbour: Property;
+                    if (i === 0) {
+                        antiClockwiseNeighbour =
+                            nextState.props[nextState.props.length - 1];
+                    } else {
+                        antiClockwiseNeighbour = nextState.props[i - 1];
+                    }
 
-            moveToAnyProperty: (): GameState[] => {
-                return [];
+                    // Decrement the rent level but clamp it to 1
+                    if (
+                        antiClockwiseNeighbour.rentLevel !== null &&
+                        antiClockwiseNeighbour.rentLevel > 1
+                    ) {
+                        antiClockwiseNeighbour.rentLevel -= 1;
+                        hasEffect = true;
+                    }
+
+                    // Push this new state if it's different
+                    if (hasEffect) children.push(nextState);
+                }
             }
-        }[this.board.activeChanceCard!]();
+
+            return children.length ? children : [this.clone()];
+        },
+        swapProperty: (): GameState[] => {
+            return [];
+        },
+        sendOpponentToJail: (): GameState[] => {
+            return [];
+        },
+        moveToAnyProperty: (): GameState[] => {
+            return [];
+        }
+    };
+
+    getChanceCardEffects(): GameState[] {
+        // Get child states according to the currently active chance card
+        const children = this.ccEffects[this.board.activeChanceCard!]();
 
         // Reset active chance card
         children.forEach((c) => (c.board.activeChanceCard = null));
@@ -609,6 +682,12 @@ export class GameState {
             ? this.getRollEffects()
             : this.getChoiceEffects();
     }
+
+    //==========    Minimax    ==========//
+
+    // TODO
+
+    //==========    Miscellaneous    ==========//
 
     /** Get a pretty string representing the current game state. */
     toString(): string {
