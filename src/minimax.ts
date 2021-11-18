@@ -1,5 +1,5 @@
 import clone from 'just-clone';
-import { significantRolls, singleProbability } from './precalculatedRolls';
+import { significantRolls, singleProbability } from './helpers';
 import {
     Player,
     Board,
@@ -136,23 +136,23 @@ export class GameState {
      * (whichever comes first) then return all the possible results of this.
      */
     static rollForDoubles(tries: number): DiceRoll[] {
-        /* 
-        Let P(S) be the probability that a double is not attained in one roll.
-        Let P(r) be the probability of obtaining a specific dice configuration 
-        `r` after one roll. The return value of `significantRolls` demonstrates 
-        all possible "specific dice configurations".
-
-        When rolling the dice for maximum of `n` times, or stopping
-        when we get doubles, the probabilities work out as follows:
-
-        The probability of the final roll `r` being any double `d` (where the sum
-        of the dice is `2d`) is given by `sum_(i=0)^(n-1) P(r) * P(S)^i`.
-        
-        The probability of all `n` rolls being non-doubles (and hence the
-        final roll being a non-double `r`) is given by `P(r) * P(S)^(n - 1)`.
-        
-        The following code implements this.
-        */
+        /*
+         *  Let P(S) be the probability that a double is not attained in one roll.
+         *  Let P(r) be the probability of obtaining a specific dice configuration
+         *  `r` after one roll. The return value of `significantRolls` demonstrates
+         *  all possible "specific dice configurations".
+         *
+         *  When rolling the dice for maximum of `n` times, or stopping
+         *  when we get doubles, the probabilities work out as follows:
+         *
+         *  The probability of the final roll `r` being any double `d` (where the sum
+         *  of the dice is `2d`) is given by `sum_(i=0)^(n-1) P(r) * P(S)^i`.
+         *
+         *  The probability of all `n` rolls being non-doubles (and hence the
+         *  final roll being a non-double `r`) is given by `P(r) * P(S)^(n - 1)`.
+         *
+         *  The following code implements this.
+         */
         return significantRolls.map((roll) => {
             let totalProbability: number;
 
