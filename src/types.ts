@@ -46,6 +46,8 @@ export interface Board {
     currentPlayerIndex: number;
     nextMoveIsChance: boolean;
     activeChanceCard: null | chanceCard;
+    /** Rounds to go until the "ccLvl1Rent" chance card's effect expires */
+    ccLvl1Rent: number;
 }
 
 /** A player playing the game */

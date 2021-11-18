@@ -211,7 +211,9 @@ export class GameState {
         }
 
         // Chance card: Pay level 1 rent for 2 rounds
-        // TODO
+        const lvl1Rent = this.clone(this.probability! / 21);
+        lvl1Rent.board.ccLvl1Rent = this.players.length * 2 + 1;
+        children.push(lvl1Rent);
 
         // Chance card: Move all players not in jail to free parking
         const allToParking = this.clone(this.probability! / 21);
@@ -264,8 +266,15 @@ export class GameState {
      */
     getRollEffects(): GameState[] {
         const children: GameState[] = [];
+        const newChild = (...c: GameState[]) => {
+            for (const state of c) {
+                if (state.board.ccLvl1Rent) state.board.ccLvl1Rent--;
+            }
 
-        // Try getting out of jail if the player is in jail
+            children.push(...c);
+        };
+
+        // Get out of jail if the player is in jail
         if (this.currentPlayer.inJail) {
             // Try rolling doubles to get out of jail
             const doubleProbabilities = GameState.rollForDoubles(3);
@@ -289,7 +298,7 @@ export class GameState {
                 }
 
                 // Push the updated state to children
-                children.push(newState);
+                newChild(newState);
             }
         }
 
@@ -331,7 +340,7 @@ export class GameState {
                 ) {
                     const [childStates, choicefulProbability] =
                         nextState.getEffectsOfRollingToCC();
-                    children.push(...childStates);
+                    newChild(...childStates);
                     nextState.probability = choicefulProbability;
                 } else {
                     // Now the player has to do something according to the tile they're on
@@ -339,13 +348,13 @@ export class GameState {
                 }
 
                 // Push the new game state to children
-                children.push(nextState);
+                newChild(nextState);
             }
         }
 
-        // Get an id representing each player. Players with
-        // the exact same state should have the exact same id.
-        const playerIds = children.map(
+        // Get an id representing each state.
+        // Identical states should have the exact same id.
+        const stateIds = children.map(
             (gs) =>
                 // `this.board.currentPlayerIndex` is the index of the player who *just* moved.
                 // `gs.board.currentPlayerIndex` could be the index of the next player to move
@@ -356,7 +365,8 @@ export class GameState {
                 // exact same state using different means / methods.
                 JSON.stringify(gs.players[this.board.currentPlayerIndex]) +
                 JSON.stringify(gs.props) +
-                JSON.stringify(gs.board.activeChanceCard)
+                gs.board.activeChanceCard +
+                gs.board.ccLvl1Rent.toString()
         );
 
         // Store non-duplicate nodes here
@@ -366,7 +376,7 @@ export class GameState {
 
         // Merge duplicate nodes
         while (
-            (lastId = playerIds.pop()) !== undefined &&
+            (lastId = stateIds.pop()) !== undefined &&
             (lastChild = children.pop()) !== undefined
         ) {
             if (lastId in seen) {
@@ -418,10 +428,15 @@ export class GameState {
         else {
             const newState = this.clone();
 
-            const balanceDue =
-                newState.currentProperty!.rents[
-                    newState.currentProperty!.rentLevel!
-                ];
+            let balanceDue: number;
+            if (this.board.ccLvl1Rent) {
+                balanceDue = newState.currentProperty!.rents[0];
+            } else {
+                balanceDue =
+                    newState.currentProperty!.rents[
+                        newState.currentProperty!.rentLevel!
+                    ];
+            }
 
             // Pay the owner...
             newState.players[newState.currentProperty!.owner!].balance +=
@@ -805,6 +820,11 @@ export class GameState {
         if (this.board.activeChanceCard) {
             // E.g.: "Active CC: rentLvlTo5"
             metadataStr += `Active CC: ${this.board.activeChanceCard}\n`;
+        }
+
+        if (this.board.ccLvl1Rent) {
+            // E.g.: "CC lvl 1 rent: 2"
+            metadataStr += `CcLvl1Rent: ${this.board.ccLvl1Rent}\n`;
         }
 
         return metadataStr + playersStr;

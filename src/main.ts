@@ -1,6 +1,5 @@
 import { PropertyFactory, MakePlayers, assert } from './helpers';
 import { GameState } from './minimax';
-import { Player } from './types';
 
 // Initialise players
 const players = MakePlayers(2);
@@ -33,7 +32,8 @@ let game = new GameState(players, {
     ],
     currentPlayerIndex: 0,
     nextMoveIsChance: true,
-    activeChanceCard: null
+    activeChanceCard: null,
+    ccLvl1Rent: 0
 });
 
 // Play some turns
@@ -42,7 +42,7 @@ let game = new GameState(players, {
 //     game = children[Math.round(Math.random() * (children.length - 1))];
 // }
 
-game = game.getChildren()[44];
+// game = game.getChildren()[44];
 const children = game.getChildren();
 
 console.log(children.map((c) => c.toString()).join('\n'));
