@@ -273,6 +273,18 @@ export class GameState {
 
             children.push(...c);
         };
+        const chanceEffects = (state: GameState) => {
+            // Check if the player landed on a chance card tile
+            if (positions.chanceCards.includes(state.currentPlayer.position)) {
+                const [childStates, choicefulProbability] =
+                    state.getEffectsOfRollingToCC();
+                newChild(...childStates);
+                state.probability = choicefulProbability;
+            } else {
+                // Now the player has to do something according to the tile they're on
+                state.board.nextMoveIsChance = false;
+            }
+        };
 
         // Get out of jail if the player is in jail
         if (this.currentPlayer.inJail) {
@@ -284,18 +296,16 @@ export class GameState {
                 // Derive a new game state from the current game state
                 const newState = this.clone(roll.probability);
 
-                // Update the current player's position
-                newState.moveBy(roll.sum);
-                // Now the player has to do something according to the tile they're on
-                newState.board.nextMoveIsChance = false;
-
-                // TODO: Refactor this to compress possibilities of choice-less chance cards
-
                 // We didn't manage to roll doubles
                 if (roll.doubles === null) {
                     // $100 penalty for not rolling doubles
                     newState.currentPlayer.balance -= 100;
                 }
+
+                // Update the current player's position
+                newState.moveBy(roll.sum);
+
+                chanceEffects(newState);
 
                 // Push the updated state to children
                 newChild(newState);
@@ -332,20 +342,7 @@ export class GameState {
                     nextState.currentPlayer.doublesRolled = 0;
                 }
 
-                // Check if the player landed on a chance card tile
-                if (
-                    positions.chanceCards.includes(
-                        nextState.currentPlayer.position
-                    )
-                ) {
-                    const [childStates, choicefulProbability] =
-                        nextState.getEffectsOfRollingToCC();
-                    newChild(...childStates);
-                    nextState.probability = choicefulProbability;
-                } else {
-                    // Now the player has to do something according to the tile they're on
-                    nextState.board.nextMoveIsChance = false;
-                }
+                chanceEffects(nextState);
 
                 // Push the new game state to children
                 newChild(nextState);
@@ -740,6 +737,10 @@ export class GameState {
     };
 
     getChanceCardEffects(): GameState[] {
+        if (!(this.board.activeChanceCard! in this.ccEffects)) {
+            console.log(this.board.activeChanceCard);
+        }
+
         // Get child states according to the currently active chance card
         const children = this.ccEffects[this.board.activeChanceCard!]();
 
@@ -767,14 +768,12 @@ export class GameState {
         // The player landed on one of the corners
         else {
             let child = this.clone();
-            child.nextPlayer();
-
             children = [child];
         }
 
         // It's the next player's turn (if this player didn't roll doubles)
-        for (let i = 0; i < children.length; i++) {
-            children[i].nextPlayer();
+        for (let child of children) {
+            child.nextPlayer();
         }
 
         return children;

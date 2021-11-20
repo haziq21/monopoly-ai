@@ -1,5 +1,8 @@
-import { PropertyFactory, MakePlayers, assert } from './helpers';
+import { PropertyFactory, MakePlayers } from './helpers';
 import { GameState } from './minimax';
+
+// Start the timer
+console.time('Simulation time');
 
 // Initialise players
 const players = MakePlayers(2);
@@ -36,16 +39,20 @@ let game = new GameState(players, {
     ccLvl1Rent: 0
 });
 
-// Play some turns
-// for (let i = 0; i < 10; i++) {
-//     const children = game.getChildren();
-//     game = children[Math.round(Math.random() * (children.length - 1))];
-// }
+/** Get all the child nodes reachable within `ply` ply. */
+function aggregateChildren(state: GameState, ply: number): GameState[] {
+    if (ply < 1) return [state];
 
-// game = game.getChildren()[44];
-const children = game.getChildren();
+    return state
+        .getChildren()
+        .map((child) => aggregateChildren(child, ply - 1))
+        .flat();
+}
 
-console.log(children.map((c) => c.toString()).join('\n'));
+const children = aggregateChildren(game, 4);
+
+// Log the tree nodes
+// console.log(children.map((c) => c.toString()).join('\n'));
 console.log(`\n${children.length} child states`);
 
 // Log the total probability
@@ -60,3 +67,6 @@ if (children.every((p) => p.probability === null)) {
     totalProbability = Math.round(totalProbability * 10 ** 10) / 10 ** 10;
     console.log(`Total probability: ${totalProbability}`);
 }
+
+// Stop the timer
+console.timeEnd('Simulation time');
