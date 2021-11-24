@@ -1,12 +1,13 @@
 #![allow(dead_code, unused_mut, unused_variables)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 mod helpers;
 use helpers::*;
 
 const NUM_PLAYERS: usize = 2;
 
+#[derive(Copy, Clone)]
 enum StateType {
     Chance(f64),
     Choice,
@@ -21,19 +22,24 @@ impl StateType {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 struct Player {
     in_jail: bool,
     position: u8,
     balance: u16,
     doubles_rolled: u8,
+    /// A hashmap containing the indexes of the properties that
+    /// the player owns in the form `HashMap<index, rent_level>`
+    property_rents: HashMap<usize, u8>,
 }
 
+#[derive(Clone)]
 struct State {
     r#type: StateType,
     players: [Player; NUM_PLAYERS],
     current_player_index: usize,
     next_move_is_chance: bool,
+    active_cc: ChanceCard,
 }
 
 impl State {
@@ -153,6 +159,9 @@ impl State {
         children
     }
 
+    /// Return child nodes of the current game state that
+    /// can be reached by rolling to a chance card tile.
+    /// This modifies `self` and is only called in `roll_effects()`.
     fn roll_to_cc_effects(&mut self) -> Vec<State> {
         // PLayer did not land on a chance card tile so don't do anything
         if !CC_POSITIONS.contains(&self.current_player().position) {
@@ -160,22 +169,81 @@ impl State {
             return vec![];
         }
 
-        let children = vec![];
+        let mut children = vec![];
 
         // Chance card: -$50 per property owned
-        let property_penalty = State {
+        let mut property_penalty = State {
             r#type: StateType::Chance(self.r#type.probability() / 21.),
-            ..*self
+            ..self.clone()
         };
-        let mut property_penalty_has_effect = false;
+        let mut property_penalty_deduction = 0;
 
         // Deduct $50 per property owned
-        // for prop in propertyPenalty.props {
-        //     if prop.owner == propertyPenalty.board.currentPlayerIndex {
-        //         propertyPenalty.currentPlayer.balance -= 50;
-        //         propertyPenaltyIsDifferent = true;
-        //     }
-        // }
+        for _ in &property_penalty.current_player().property_rents {
+            property_penalty_deduction += 50;
+        }
+        property_penalty.current_player().balance -= property_penalty_deduction;
+
+        // Only add a new child state if it's different
+        if property_penalty_deduction > 0 {
+            property_penalty.setup_next_player();
+            children.push(property_penalty);
+        }
+
+        // Chance card: Move all players not in jail to free parking
+        let mut all_to_parking = State {
+            r#type: StateType::Chance(self.r#type.probability() / 21.),
+            ..self.clone()
+        };
+        let mut all_to_parking_has_effect = false;
+
+        // Move players to 'free parking'
+        for player in &mut all_to_parking.players {
+            if !player.in_jail {
+                player.position = 18;
+                all_to_parking_has_effect = true;
+            }
+        }
+
+        // Only add a new child state if it's different
+        if all_to_parking_has_effect {
+            all_to_parking.setup_next_player();
+            children.push(all_to_parking);
+        }
+
+        // Chance cards that require the player to make a choice
+        let choiceful_ccs = [
+            (3, ChanceCard::RentLvlTo1),
+            (1, ChanceCard::RentLvlTo5),
+            (3, ChanceCard::RentLvlIncForSet),
+            (1, ChanceCard::RentLvlDecForSet),
+            (1, ChanceCard::RentLvlIncForBoardSide),
+            (1, ChanceCard::RentLvlDecForBoardSide),
+            (2, ChanceCard::RentLvlDecForNeighbours),
+            (2, ChanceCard::BonusForYouAndOpponent),
+        ];
+
+        // Push the child states for all the choiceful chance cards
+        for (amount, card) in choiceful_ccs {
+            children.push(State {
+                r#type: StateType::Chance(self.r#type.probability() * amount as f64 / 21.),
+                active_cc: card,
+                next_move_is_chance: false,
+                ..self.clone()
+            });
+        }
+
+        let total_children_probability: f64 = children
+            .iter()
+            .map(|child| child.r#type.probability())
+            .sum();
+
+        // Correct the current state's probability to
+        // account for the chance card child states
+        self.r#type = match self.r#type {
+            StateType::Chance(p) => StateType::Chance(p - total_children_probability),
+            _ => unreachable!(),
+        };
 
         children
     }
@@ -194,7 +262,7 @@ impl State {
                 // Derive a new game state from the current game state
                 let mut new_state = State {
                     r#type: StateType::Chance(roll.probability),
-                    ..*self
+                    ..self.clone()
                 };
 
                 // We didn't manage to roll doubles
@@ -206,7 +274,8 @@ impl State {
                 // Update the current player's position
                 new_state.move_by(roll.sum);
 
-                // chanceEffects(newState);
+                let cc_effects = new_state.roll_to_cc_effects();
+                children.splice(children.len().., cc_effects);
 
                 // Store the updated state
                 children.push(new_state);
@@ -219,7 +288,7 @@ impl State {
                 // Derive a new game state from the current game state
                 let mut new_state = State {
                     r#type: StateType::Chance(roll.probability),
-                    ..*self
+                    ..self.clone()
                 };
 
                 // Update the current player's position
@@ -242,6 +311,9 @@ impl State {
                     // Reset the doubles counter
                     new_state.current_player().doubles_rolled = 0;
                 }
+
+                let cc_effects = new_state.roll_to_cc_effects();
+                children.splice(children.len().., cc_effects);
 
                 // Store the new game state
                 children.push(new_state);
@@ -272,7 +344,4 @@ fn main() {
     let _prop_positions = HashSet::from([
         1, 3, 5, 6, 8, 10, 12, 13, 14, 15, 17, 19, 21, 22, 23, 24, 26, 28, 30, 31, 33, 35,
     ]);
-
-    println!("{:?}", *SIGNIFICANT_ROLLS);
-    println!("{}", *SINGLE_PROBABILITY);
 }

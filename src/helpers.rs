@@ -19,6 +19,7 @@ pub enum Color {
     Blue,
 }
 
+#[derive(Copy, Clone)]
 pub enum ChanceCard {
     RentLvlTo1,
     RentLvlTo5,
