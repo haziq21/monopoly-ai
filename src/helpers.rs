@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 
 #[derive(Debug, Copy, Clone)]
 pub struct DiceRoll {
@@ -67,11 +68,17 @@ pub struct Player {
     pub property_rents: HashMap<usize, u8>,
 }
 
-// impl std::fmt::Display for Player {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "({}, {})", self.longitude, self.latitude)
-//     }
-// }
+impl std::fmt::Display for Player {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let pos_color = if self.in_jail { "\x1b[31m" } else { "\x1b[36m" };
+
+        write!(
+            f,
+            "[{}{:02}\x1b[0m] \x1b[33m{}\x1b[0mdbls \x1b[32m${}\x1b[0m",
+            pos_color, self.position, self.doubles_rolled, self.balance
+        )
+    }
+}
 
 pub fn build_property(position: u8, color: Color, price: u16, rents: [u16; 5]) -> Property {
     Property {

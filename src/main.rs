@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_mut, unused_variables)]
 
-// use std::fmt;
+use std::fmt;
 
 mod helpers;
 use helpers::*;
@@ -12,6 +12,34 @@ struct State {
     current_player_index: usize,
     next_move_is_chance: bool,
     active_cc: Option<ChanceCard>,
+}
+
+impl fmt::Display for State {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let metadata = match self.r#type {
+            StateType::Chance(p) => format!("Probability: \x1b[33m{}\x1b[0m", p),
+            StateType::Choice => String::from("No probability"),
+        };
+
+        let mut players_str = "".to_owned();
+        for i in 0..self.players.len() {
+            players_str += &format!("{}", self.players[i]);
+
+            if self.current_player_index == i {
+                players_str += &format!(
+                    " < next: \x1b[36m{}\x1b[0m",
+                    match self.r#type {
+                        StateType::Chance(_) => "chance",
+                        StateType::Choice => "choice",
+                    }
+                )
+            }
+
+            players_str += "\n";
+        }
+
+        write!(f, "{}\n{}", metadata, players_str)
+    }
 }
 
 impl State {
@@ -309,6 +337,28 @@ impl State {
     // TODO
 }
 
+fn print_states(states: &Vec<State>) {
+    for child in states {
+        println!("{}", child);
+    }
+
+    println!("{} total child states", states.len());
+
+    let total_probability: f64 = states
+        .iter()
+        .map(|s| match s.r#type {
+            StateType::Chance(p) => p,
+            StateType::Choice => 0.,
+        })
+        .sum();
+
+    if total_probability != 0. {
+        println!("Total probability: {}", total_probability);
+    } else {
+        println!("No total probability")
+    }
+}
+
 fn main() {
     let mut origin_state = State {
         r#type: StateType::Choice,
@@ -318,5 +368,6 @@ fn main() {
         active_cc: None,
     };
 
-    println!("{:?}", origin_state);
+    let children = origin_state.children();
+    print_states(&children);
 }
