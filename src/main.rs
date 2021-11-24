@@ -37,12 +37,21 @@ struct State {
 }
 
 impl State {
-    /*********        HELPER FUNCTIONS        *********/
+    /*********        ALIASES (FOR CONVENIECE)        *********/
 
     /// The player whose turn it currently is.
     fn current_player(&mut self) -> &mut Player {
         &mut self.players[self.current_player_index]
     }
+
+    /// The property the current player is on.
+    fn current_property(&mut self) -> Option<&Property> {
+        PROPERTIES
+            .iter()
+            .find(|&prop| prop.position == self.current_player().position)
+    }
+
+    /*********        HELPER FUNCTIONS        *********/
 
     /// Move the current player by the specified amount of tiles.
     fn move_by(&mut self, amount: u8) {
@@ -155,7 +164,7 @@ impl State {
 
         // Chance card: -$50 per property owned
         let property_penalty = State {
-            r#type: StateType::Chance(self.r#type.probability() / 21),
+            r#type: StateType::Chance(self.r#type.probability() / 21.),
             ..*self
         };
         let mut property_penalty_has_effect = false;
@@ -257,31 +266,6 @@ impl State {
 }
 
 fn main() {
-    let _properties = [
-        build_property(1, Color::Brown, 60, [70, 130, 220, 370, 750]),
-        build_property(3, Color::Brown, 60, [70, 130, 220, 370, 750]),
-        build_property(5, Color::LightBlue, 100, [80, 140, 240, 410, 800]),
-        build_property(6, Color::LightBlue, 100, [80, 140, 240, 410, 800]),
-        build_property(8, Color::LightBlue, 120, [100, 160, 260, 440, 860]),
-        build_property(10, Color::Pink, 140, [110, 180, 290, 460, 900]),
-        build_property(12, Color::Pink, 140, [110, 180, 290, 460, 900]),
-        build_property(13, Color::Pink, 160, [130, 200, 310, 490, 980]),
-        build_property(14, Color::Orange, 180, [140, 210, 330, 520, 1000]),
-        build_property(15, Color::Orange, 180, [140, 210, 330, 520, 1000]),
-        build_property(17, Color::Orange, 200, [160, 230, 350, 550, 1100]),
-        build_property(19, Color::Red, 220, [170, 250, 380, 580, 1160]),
-        build_property(21, Color::Red, 220, [170, 250, 380, 580, 1160]),
-        build_property(22, Color::Red, 240, [190, 270, 400, 610, 1200]),
-        build_property(23, Color::Yellow, 260, [200, 280, 420, 640, 1300]),
-        build_property(24, Color::Yellow, 260, [200, 280, 420, 640, 1300]),
-        build_property(26, Color::Yellow, 280, [220, 300, 440, 670, 1340]),
-        build_property(28, Color::Green, 300, [230, 320, 460, 700, 1400]),
-        build_property(30, Color::Green, 300, [230, 320, 460, 700, 1400]),
-        build_property(31, Color::Green, 320, [250, 340, 480, 730, 1440]),
-        build_property(33, Color::Blue, 350, [270, 360, 510, 740, 1500]),
-        build_property(35, Color::Blue, 400, [300, 400, 560, 810, 1600]),
-    ];
-
     let _loc_positions = HashSet::from([7, 16, 25, 34]);
 
     let _cc_positions = HashSet::from([2, 4, 11, 20, 29, 32]);
