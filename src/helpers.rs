@@ -1,5 +1,5 @@
 use lazy_static::lazy_static;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Copy, Clone)]
 pub struct DiceRoll {
@@ -19,7 +19,7 @@ pub enum Color {
     Blue,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum ChanceCard {
     RentLvlTo1,
     RentLvlTo5,
@@ -41,6 +41,38 @@ pub struct Property {
     pub rents: [u16; 5],
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum StateType {
+    Chance(f64),
+    Choice,
+}
+
+impl StateType {
+    pub fn probability(&self) -> f64 {
+        match self {
+            StateType::Chance(p) => *p,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Player {
+    pub in_jail: bool,
+    pub position: u8,
+    pub balance: u16,
+    pub doubles_rolled: u8,
+    /// A hashmap containing the indexes of the properties that
+    /// the player owns in the form `HashMap<index, rent_level>`
+    pub property_rents: HashMap<usize, u8>,
+}
+
+// impl std::fmt::Display for Player {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "({}, {})", self.longitude, self.latitude)
+//     }
+// }
+
 pub fn build_property(position: u8, color: Color, price: u16, rents: [u16; 5]) -> Property {
     Property {
         position,
@@ -50,9 +82,35 @@ pub fn build_property(position: u8, color: Color, price: u16, rents: [u16; 5]) -
     }
 }
 
+pub fn build_players(amount: usize) -> Vec<Player> {
+    let mut players = Vec::with_capacity(amount);
+
+    for i in 0..amount {
+        players.push(Player {
+            in_jail: false,
+            position: 0,
+            balance: 1500,
+            doubles_rolled: 0,
+            property_rents: HashMap::new(),
+        })
+    }
+
+    players
+}
+
+pub const NUM_PLAYERS: usize = 2;
+
 lazy_static! {
     /// Positions of the chance card tiles on the game board.
     pub static ref CC_POSITIONS: HashSet<u8> = HashSet::from([2, 4, 11, 20, 29, 32]);
+
+    /// Positions of the location tiles on the game board.
+    pub static ref LOC_POSITIONS: HashSet<u8> = HashSet::from([7, 16, 25, 34]);
+
+    /// Positions of the property tiles on the game board.
+    pub static ref PROP_POSITIONS: HashSet<u8> = HashSet::from([
+        1, 3, 5, 6, 8, 10, 12, 13, 14, 15, 17, 19, 21, 22, 23, 24, 26, 28, 30, 31, 33, 35,
+    ]);
 
     /// All the properties on the game board.
     pub static ref PROPERTIES: [Property; 22] = [

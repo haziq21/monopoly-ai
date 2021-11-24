@@ -1,45 +1,17 @@
 #![allow(dead_code, unused_mut, unused_variables)]
 
-use std::collections::{HashMap, HashSet};
+// use std::fmt;
 
 mod helpers;
 use helpers::*;
 
-const NUM_PLAYERS: usize = 2;
-
-#[derive(Copy, Clone)]
-enum StateType {
-    Chance(f64),
-    Choice,
-}
-
-impl StateType {
-    fn probability(&self) -> f64 {
-        match self {
-            StateType::Chance(p) => *p,
-            _ => unreachable!(),
-        }
-    }
-}
-
-#[derive(Clone)]
-struct Player {
-    in_jail: bool,
-    position: u8,
-    balance: u16,
-    doubles_rolled: u8,
-    /// A hashmap containing the indexes of the properties that
-    /// the player owns in the form `HashMap<index, rent_level>`
-    property_rents: HashMap<usize, u8>,
-}
-
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct State {
     r#type: StateType,
-    players: [Player; NUM_PLAYERS],
+    players: Vec<Player>,
     current_player_index: usize,
     next_move_is_chance: bool,
-    active_cc: ChanceCard,
+    active_cc: Option<ChanceCard>,
 }
 
 impl State {
@@ -227,7 +199,7 @@ impl State {
         for (amount, card) in choiceful_ccs {
             children.push(State {
                 r#type: StateType::Chance(self.r#type.probability() * amount as f64 / 21.),
-                active_cc: card,
+                active_cc: Some(card),
                 next_move_is_chance: false,
                 ..self.clone()
             });
@@ -338,10 +310,13 @@ impl State {
 }
 
 fn main() {
-    let _loc_positions = HashSet::from([7, 16, 25, 34]);
+    let mut origin_state = State {
+        r#type: StateType::Choice,
+        players: build_players(2),
+        current_player_index: 0,
+        next_move_is_chance: true,
+        active_cc: None,
+    };
 
-    let _cc_positions = HashSet::from([2, 4, 11, 20, 29, 32]);
-    let _prop_positions = HashSet::from([
-        1, 3, 5, 6, 8, 10, 12, 13, 14, 15, 17, 19, 21, 22, 23, 24, 26, 28, 30, 31, 33, 35,
-    ]);
+    println!("{:?}", origin_state);
 }
