@@ -21,6 +21,7 @@ pub enum Color {
 }
 
 #[derive(Copy, Clone, Debug)]
+/// Chance cards that require the player to make a choice.
 pub enum ChanceCard {
     RentLvlTo1,
     RentLvlTo5,

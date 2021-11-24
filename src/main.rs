@@ -12,14 +12,24 @@ struct State {
     current_player_index: usize,
     next_move_is_chance: bool,
     active_cc: Option<ChanceCard>,
+    lvl1rent_cc: usize,
 }
 
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let metadata = match self.r#type {
+        let mut metadata = match self.r#type {
             StateType::Chance(p) => format!("Probability: \x1b[33m{}\x1b[0m", p),
             StateType::Choice => String::from("No probability"),
         };
+
+        match self.active_cc {
+            Some(cc) => metadata.push_str(&format!("\nActive CC: {:?}", cc)),
+            None => (),
+        }
+
+        if self.lvl1rent_cc > 0 {
+            metadata += &format!("\nLvl1rent: {} turns to go", self.lvl1rent_cc);
+        }
 
         let mut players_str = "".to_owned();
         for i in 0..self.players.len() {
@@ -165,7 +175,7 @@ impl State {
     fn roll_to_cc_effects(&mut self) -> Vec<State> {
         // PLayer did not land on a chance card tile so don't do anything
         if !CC_POSITIONS.contains(&self.current_player().position) {
-            self.next_move_is_chance = true;
+            self.next_move_is_chance = false;
             return vec![];
         }
 
@@ -189,6 +199,13 @@ impl State {
             property_penalty.setup_next_player();
             children.push(property_penalty);
         }
+
+        // Chance card: Pay level 1 rent for 2 rounds
+        children.push(State {
+            r#type: StateType::Chance(self.r#type.probability() / 21.),
+            lvl1rent_cc: self.players.len() * 2 + 1,
+            ..self.clone()
+        });
 
         // Chance card: Move all players not in jail to free parking
         let mut all_to_parking = State {
@@ -226,7 +243,7 @@ impl State {
         // Push the child states for all the choiceful chance cards
         for (amount, card) in choiceful_ccs {
             children.push(State {
-                r#type: StateType::Chance(self.r#type.probability() * amount as f64 / 21.),
+                r#type: StateType::Chance(self.r#type.probability() * (amount as f64) / 21.),
                 active_cc: Some(card),
                 next_move_is_chance: false,
                 ..self.clone()
@@ -251,6 +268,19 @@ impl State {
     /// Return child nodes of the current game state that can be reached by rolling dice.
     fn roll_effects(&mut self) -> Vec<State> {
         let mut children = vec![];
+        let mut push_cc_effect = |mut state: State| {
+            let mut cc_effects = state.roll_to_cc_effects();
+            for s in &mut cc_effects {
+                if s.lvl1rent_cc > 0 {
+                    s.lvl1rent_cc -= 1
+                }
+            }
+
+            children.splice(children.len().., cc_effects);
+
+            // Store the new game state
+            children.push(state);
+        };
 
         // Get the player out of jail if they're in jail
         if self.current_player().in_jail {
@@ -274,11 +304,7 @@ impl State {
                 // Update the current player's position
                 new_state.move_by(roll.sum);
 
-                let cc_effects = new_state.roll_to_cc_effects();
-                children.splice(children.len().., cc_effects);
-
-                // Store the updated state
-                children.push(new_state);
+                push_cc_effect(new_state);
             }
         }
         // Otherwise, play as normal
@@ -312,11 +338,7 @@ impl State {
                     new_state.current_player().doubles_rolled = 0;
                 }
 
-                let cc_effects = new_state.roll_to_cc_effects();
-                children.splice(children.len().., cc_effects);
-
-                // Store the new game state
-                children.push(new_state);
+                push_cc_effect(new_state);
             }
         }
 
@@ -366,6 +388,7 @@ fn main() {
         current_player_index: 0,
         next_move_is_chance: true,
         active_cc: None,
+        lvl1rent_cc: 0,
     };
 
     let children = origin_state.children();
