@@ -371,10 +371,13 @@ impl State {
 
         // Correct the current state's probability to
         // account for the chance card child states
-        self.r#type = match self.r#type {
-            StateType::Chance(p) => StateType::Chance(p - total_children_probability),
-            _ => unreachable!(),
+        if let StateType::Chance(p) = self.r#type {
+            self.r#type = StateType::Chance(p - total_children_probability);
         };
+
+        // total_children_probability != self.r#type.probability() when a chance card has no effect.
+        // `self` is the state where none of the chance cards apply, so it's the next player's turn.
+        self.setup_next_player();
 
         children
     }
@@ -397,7 +400,11 @@ impl State {
 
                 children.splice(children.len().., cc_effects);
 
-                return; // to avoid pushing `state` to children
+                match state.r#type {
+                    // No need to push `state` to children if its probability is 0
+                    StateType::Chance(p) if p == 0. => return,
+                    _ => (),
+                }
             } else if CORNER_POSITIONS.contains(&state.current_player().position) {
                 // This tile does nothing so it's the next player's turn
                 state.setup_next_player();
