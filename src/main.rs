@@ -1,5 +1,7 @@
 #![allow(dead_code, unused_mut, unused_variables)]
 
+use bigint::uint::U256;
+use std::collections::HashMap;
 use std::fmt;
 
 mod helpers;
@@ -18,7 +20,7 @@ struct State {
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut metadata = match self.r#type {
-            StateType::Chance(p) => format!("Probability: \x1b[33m{}\x1b[0m", p),
+            StateType::Chance(p) => format!("Probability: \x1b[33m{:.2}%\x1b[0m", p * 100.),
             StateType::Choice => String::from("No probability"),
         };
 
@@ -38,9 +40,10 @@ impl fmt::Display for State {
             if self.current_player_index == i {
                 players_str += &format!(
                     " < next: \x1b[36m{}\x1b[0m",
-                    match self.r#type {
-                        StateType::Chance(_) => "chance",
-                        StateType::Choice => "choice",
+                    if self.next_move_is_chance {
+                        "chance"
+                    } else {
+                        "choice"
                     }
                 )
             }
@@ -161,6 +164,96 @@ impl State {
             .collect()
     }
 
+    /// Return a hash of the current state, used to identify duplicate states.
+    ///
+    /// The layout of the returned `U256`, from right to left, is as follows:
+    /// 1. current player's `in_jail` (1 bit)
+    /// 2. current player's `position` (6 bits)
+    /// 3. current player's `balance` (16 bits)
+    /// 4. current player's `doubles_rolled` (2 bits)
+    /// 5. `active_cc` (4 bits)
+    /// 6. `lvl1rent_cc` (4 bits)   
+    /// 7. Properties and their ownership (132 bits)
+    fn hash(&self, active_player_index: usize) -> U256 {
+        let curr_player = &self.players[active_player_index];
+
+        // U256::from(struct_property) << horizontal_offset_from_right
+        let in_jail = U256::from(curr_player.in_jail as u8) << 0;
+        let position = U256::from(curr_player.position) << 1;
+        let balance = U256::from(curr_player.balance) << 7;
+        let doubles_rolled = U256::from(curr_player.doubles_rolled) << 23;
+        let active_cc = match self.active_cc {
+            Some(cc) => U256::from(cc as u8),
+            None => U256::from(0),
+        } << 25;
+        let lvl1rent_cc = U256::from(self.lvl1rent_cc) << 29;
+
+        // property22_owner (3 bits), property22_rent_level (3 bits), property21_owner, ...
+        let mut props = U256::from(0);
+        for (player_i, player) in self.players.iter().enumerate() {
+            for (prop_i, rent_level) in &player.property_rents {
+                let rent_level_bits = U256::from(*rent_level) << (prop_i * 6);
+                let owner_bits = U256::from(player_i) << (prop_i * 6 + 3);
+
+                props = props | rent_level_bits | owner_bits;
+            }
+        }
+
+        in_jail | position | balance | doubles_rolled | active_cc | lvl1rent_cc | (props << 33)
+    }
+
+    /// Merges the probabilities of duplicate states
+    fn merge_probabilities(states: &mut Vec<State>, current_player_index: usize) {
+        let hashes: Vec<U256> = states
+            .iter()
+            .map(|s| s.hash(current_player_index))
+            .collect();
+        let mut seen: HashMap<U256, Vec<usize>> = HashMap::new();
+
+        // Sort every state index by their identity hash
+        for (hash, index) in hashes.iter().zip(0..states.len()) {
+            if let Some(seen_states) = seen.get_mut(hash) {
+                seen_states.push(index);
+            } else {
+                seen.insert(*hash, vec![index]);
+            }
+        }
+
+        // probabilities: Vec<(state_index, total_probability)>
+        let mut probabilities: Vec<(usize, f64)> = vec![];
+        let mut to_remove: Vec<usize> = vec![];
+
+        // Find the indexes of the duplicates
+        for indexes in seen.values_mut() {
+            if indexes.len() == 1 {
+                continue;
+            }
+
+            // Calculate the total probability
+            let total_probability: f64 = indexes
+                .iter()
+                .map(|&i| states[i].r#type.probability())
+                .sum();
+
+            let extra = &indexes[1..indexes.len()];
+            probabilities.push((indexes[0], total_probability));
+            to_remove.splice(to_remove.len().., extra.iter().cloned());
+        }
+
+        // Merge the duplicate probabilities
+        for (i, p) in probabilities {
+            states[i].r#type = StateType::Chance(p);
+        }
+
+        to_remove.sort_unstable();
+        to_remove.reverse();
+
+        // Remove the duplicates
+        for i in to_remove {
+            states.swap_remove(i);
+        }
+    }
+
     /*********        STATE GENERATION        *********/
 
     fn choice_effects(&self) -> Vec<State> {
@@ -173,12 +266,6 @@ impl State {
     /// can be reached by rolling to a chance card tile.
     /// This modifies `self` and is only called in `roll_effects()`.
     fn roll_to_cc_effects(&mut self) -> Vec<State> {
-        // PLayer did not land on a chance card tile so don't do anything
-        if !CC_POSITIONS.contains(&self.current_player().position) {
-            self.next_move_is_chance = false;
-            return vec![];
-        }
-
         let mut children = vec![];
 
         // Chance card: -$50 per property owned
@@ -192,10 +279,9 @@ impl State {
         for _ in &property_penalty.current_player().property_rents {
             property_penalty_deduction += 50;
         }
-        property_penalty.current_player().balance -= property_penalty_deduction;
-
         // Only add a new child state if it's different
         if property_penalty_deduction > 0 {
+            property_penalty.current_player().balance -= property_penalty_deduction;
             property_penalty.setup_next_player();
             children.push(property_penalty);
         }
@@ -268,15 +354,21 @@ impl State {
     /// Return child nodes of the current game state that can be reached by rolling dice.
     fn roll_effects(&mut self) -> Vec<State> {
         let mut children = vec![];
-        let mut push_cc_effect = |mut state: State| {
-            let mut cc_effects = state.roll_to_cc_effects();
-            for s in &mut cc_effects {
-                if s.lvl1rent_cc > 0 {
-                    s.lvl1rent_cc -= 1
+        let mut push_state = |mut state: State| {
+            // PLayer did not land on a chance card tile so don't do anything
+            if !CC_POSITIONS.contains(&state.current_player().position) {
+                // Now the player has to do something according to the tile they're on
+                state.next_move_is_chance = false;
+            } else {
+                let mut cc_effects = state.roll_to_cc_effects();
+                for s in &mut cc_effects {
+                    if s.lvl1rent_cc > 0 {
+                        s.lvl1rent_cc -= 1
+                    }
                 }
-            }
 
-            children.splice(children.len().., cc_effects);
+                children.splice(children.len().., cc_effects);
+            }
 
             // Store the new game state
             children.push(state);
@@ -304,7 +396,7 @@ impl State {
                 // Update the current player's position
                 new_state.move_by(roll.sum);
 
-                push_cc_effect(new_state);
+                push_state(new_state);
             }
         }
         // Otherwise, play as normal
@@ -338,9 +430,13 @@ impl State {
                     new_state.current_player().doubles_rolled = 0;
                 }
 
-                push_cc_effect(new_state);
+                push_state(new_state);
             }
         }
+
+        // The chance card "move all players not in jail to free parking"
+        // may generate identical child states, so we have to merge their probabilities
+        State::merge_probabilities(&mut children, self.current_player_index);
 
         children
     }

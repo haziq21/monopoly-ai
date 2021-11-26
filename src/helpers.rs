@@ -23,17 +23,17 @@ pub enum Color {
 #[derive(Copy, Clone, Debug)]
 /// Chance cards that require the player to make a choice.
 pub enum ChanceCard {
-    RentLvlTo1,
-    RentLvlTo5,
-    RentLvlIncForSet,
-    RentLvlDecForSet,
-    RentLvlIncForBoardSide,
-    RentLvlDecForBoardSide,
-    RentLvlDecForNeighbours,
-    BonusForYouAndOpponent,
-    SwapProperty,
-    SendOpponentToJail,
-    MoveToAnyProperty,
+    RentLvlTo1 = 1,
+    RentLvlTo5 = 2,
+    RentLvlIncForSet = 3,
+    RentLvlDecForSet = 4,
+    RentLvlIncForBoardSide = 5,
+    RentLvlDecForBoardSide = 6,
+    RentLvlDecForNeighbours = 7,
+    BonusForYouAndOpponent = 8,
+    SwapProperty = 9,
+    SendOpponentToJail = 10,
+    MoveToAnyProperty = 11,
 }
 
 pub struct Property {
@@ -106,6 +106,7 @@ pub fn build_players(amount: usize) -> Vec<Player> {
     players
 }
 
+// 2 to 4 players per game, according to the rules
 pub const NUM_PLAYERS: usize = 2;
 
 lazy_static! {
