@@ -131,7 +131,7 @@ pub struct Player {
 
 impl Player {
     /// Create a vector of players.
-    fn multiple_new(amount: usize) -> Vec<Player> {
+    pub fn multiple_new(amount: usize) -> Vec<Player> {
         let mut players = Vec::with_capacity(amount);
 
         for i in 0..amount {

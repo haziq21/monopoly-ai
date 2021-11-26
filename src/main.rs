@@ -112,9 +112,6 @@ impl State {
 
         // Reset the doubles counter
         self.players[player_index].doubles_rolled = 0;
-
-        // It's the next player's turn now
-        self.setup_next_player();
     }
 
     /// Send the current player to jail.
@@ -202,7 +199,10 @@ impl State {
         in_jail | position | balance | doubles_rolled | active_cc | lvl1rent_cc | (props << 33)
     }
 
-    /// Merges the probabilities of duplicate states
+    /// Merge the probabilities of duplicate states.
+    // Note: I'm quite sure the only duplicate state that can be generated is when
+    // a player rolls to a chance card tile and gets the "all players to free parking"
+    // card, so this function could probably be reduced to just focus on that. TODO I guess.
     fn merge_probabilities(states: &mut Vec<State>, current_player_index: usize) {
         let hashes: Vec<U256> = states
             .iter()
@@ -256,10 +256,38 @@ impl State {
 
     /*********        STATE GENERATION        *********/
 
-    fn choice_effects(&self) -> Vec<State> {
-        let mut children = vec![];
+    /// Return child nodes of the current game state that can be reached from a location tile.
+    fn loc_choice_effects(&self) -> Vec<State> {
+        vec![]
+    }
 
-        children
+    /// Return child nodes of the current game state that can be reached from a property tile.
+    fn prop_choice_effects(&self) -> Vec<State> {
+        vec![]
+    }
+
+    /// Return child nodes of the current game state that can be
+    /// reached by making a decision from a chance card tile.
+    fn cc_choice_effects(&self) -> Vec<State> {
+        vec![]
+    }
+
+    /// Return child nodes of the current game state that can be reached by making a choice.
+    fn choice_effects(&mut self) -> Vec<State> {
+        // The player landed on a location tile
+        if LOC_POSITIONS.contains(&self.current_player().position) {
+            self.loc_choice_effects()
+        }
+        // The player landed on a property tile
+        else if PROP_POSITIONS.contains(&self.current_player().position) {
+            self.prop_choice_effects()
+        }
+        // The player landed on a chance card tile
+        else if CC_POSITIONS.contains(&self.current_player().position) {
+            self.cc_choice_effects()
+        } else {
+            unreachable!();
+        }
     }
 
     /// Return child nodes of the current game state that
@@ -354,12 +382,12 @@ impl State {
     /// Return child nodes of the current game state that can be reached by rolling dice.
     fn roll_effects(&mut self) -> Vec<State> {
         let mut children = vec![];
+
+        // Performs some other actions before pushing `state` to `children`
         let mut push_state = |mut state: State| {
-            // PLayer did not land on a chance card tile so don't do anything
-            if !CC_POSITIONS.contains(&state.current_player().position) {
-                // Now the player has to do something according to the tile they're on
-                state.next_move_is_chance = false;
-            } else {
+            // PLayer landed on a chance card tile
+            if CC_POSITIONS.contains(&state.current_player().position) {
+                // Effects of rolling to a chance card tile
                 let mut cc_effects = state.roll_to_cc_effects();
                 for s in &mut cc_effects {
                     if s.lvl1rent_cc > 0 {
@@ -368,6 +396,18 @@ impl State {
                 }
 
                 children.splice(children.len().., cc_effects);
+
+                return; // to avoid pushing `state` to children
+            } else if CORNER_POSITIONS.contains(&state.current_player().position) {
+                // This tile does nothing so it's the next player's turn
+                state.setup_next_player();
+            } else {
+                // The player has to do something according to the tile they're on
+                state.next_move_is_chance = false;
+            }
+
+            if state.lvl1rent_cc > 0 {
+                state.lvl1rent_cc -= 1
             }
 
             // Store the new game state
@@ -480,7 +520,7 @@ fn print_states(states: &Vec<State>) {
 fn main() {
     let mut origin_state = State {
         r#type: StateType::Choice,
-        players: build_players(2),
+        players: Player::multiple_new(2),
         current_player_index: 0,
         next_move_is_chance: true,
         active_cc: None,
