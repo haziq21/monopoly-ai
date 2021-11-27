@@ -7,10 +7,16 @@ use std::time::Instant;
 mod helpers;
 use helpers::*;
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 struct OwnedProperty {
-    ownership: usize,
+    owner: usize,
     rent_level: u8,
+}
+
+impl OwnedProperty {
+    fn raise_rent(&mut self) {
+        self.rent_level = 5.min(self.rent_level + 1);
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -79,14 +85,24 @@ impl State {
 
     /*********        ALIASES (FOR CONVENIECE)        *********/
 
-    /// The player whose turn it currently is.
+    /// A mutable reference to the player whose turn it currently is.
     fn current_player(&mut self) -> &mut Player {
         &mut self.players[self.current_player_index]
     }
 
-    /// The property the current player is on.
-    fn current_property(&self) -> Option<&Property> {
-        PROPERTIES.get(&(self.current_player_index as u8))
+    /// The position of the current player.
+    fn current_position(&self) -> u8 {
+        self.players[self.current_player_index].position
+    }
+
+    /// A mutable reference to the property the current player is on.
+    fn current_property(&mut self) -> Option<&Property> {
+        PROPERTIES.get(&self.current_position())
+    }
+
+    /// A mutable reference to the owned property the current player is on.
+    fn current_owned_property(&mut self) -> Option<&OwnedProperty> {
+        self.owned_properties.get(&self.current_position())
     }
 
     /*********        HELPER FUNCTIONS        *********/
@@ -188,9 +204,67 @@ impl State {
     }
 
     /// Return child nodes of the current game state that can be reached from a property tile.
-    fn prop_choice_effects(&self) -> Vec<State> {
-        // if self.current_property().unwrap().
-        vec![]
+    fn prop_choice_effects(&mut self) -> Vec<State> {
+        let current_pos = self.current_position();
+        // The owned property that the current player is on
+        let current_owned_property = self.owned_properties.get(&current_pos);
+
+        match current_owned_property {
+            // The player can choose to buy this property
+            None => {
+                // Choose not to buy this property
+                let no_buy = self.clone();
+                // TODO: Implement auctioning
+
+                // Choose to buy this property
+                let mut buy_prop = self.clone();
+                buy_prop.owned_properties.insert(
+                    current_pos,
+                    OwnedProperty {
+                        owner: buy_prop.current_player_index,
+                        rent_level: 1,
+                    },
+                );
+
+                vec![no_buy, buy_prop]
+            }
+            // The rent level increases because the property is owned by this player
+            Some(prop) if prop.owner == self.current_player_index => {
+                let mut new_state = self.clone();
+                new_state
+                    .owned_properties
+                    .get_mut(&current_pos)
+                    .unwrap()
+                    .raise_rent();
+
+                vec![new_state]
+            }
+            // The player has to pay rent because it's someone else's property
+            Some(prop) => {
+                let mut new_state = self.clone();
+
+                let balance_due = if self.lvl1rent_cc > 0 {
+                    PROPERTIES[&current_pos].rents[0]
+                } else {
+                    PROPERTIES[&current_pos].rents[prop.rent_level as usize]
+                };
+
+                // Pay the owner...
+                new_state.players[prop.owner].balance += balance_due;
+
+                // ...using the current player's money
+                new_state.current_player().balance -= balance_due;
+
+                // Then increase the rent level
+                new_state
+                    .owned_properties
+                    .get_mut(&current_pos)
+                    .unwrap()
+                    .raise_rent();
+
+                vec![]
+            }
+        }
     }
 
     /// Return child nodes of the current game state that can be
@@ -232,7 +306,7 @@ impl State {
 
         // Deduct $50 per property owned
         for (_, prop) in &property_penalty.owned_properties {
-            if prop.ownership == property_penalty.current_player_index {
+            if prop.owner == property_penalty.current_player_index {
                 property_penalty_deduction += 50;
             }
         }
