@@ -8,14 +8,20 @@ mod helpers;
 use helpers::*;
 
 #[derive(Clone, Debug)]
+struct OwnedProperty {
+    ownership: usize,
+    rent_level: u8,
+}
+
+#[derive(Clone, Debug)]
 struct State {
     r#type: StateType,
     players: Vec<Player>,
-    property_owners: HashMap<usize, usize>,
+    owned_properties: HashMap<u8, OwnedProperty>,
     current_player_index: usize,
     next_move_is_chance: bool,
     active_cc: Option<ChanceCard>,
-    lvl1rent_cc: usize,
+    lvl1rent_cc: u8,
 }
 
 impl fmt::Display for State {
@@ -63,7 +69,7 @@ impl State {
         State {
             r#type: StateType::Choice,
             players: Player::multiple_new(2),
-            property_owners: HashMap::new(),
+            owned_properties: HashMap::new(),
             current_player_index: 0,
             next_move_is_chance: true,
             active_cc: None,
@@ -79,10 +85,8 @@ impl State {
     }
 
     /// The property the current player is on.
-    fn current_property(&mut self) -> Option<&Property> {
-        PROPERTIES
-            .iter()
-            .find(|&prop| prop.position == self.current_player().position)
+    fn current_property(&self) -> Option<&Property> {
+        PROPERTIES.get(&(self.current_player_index as u8))
     }
 
     /*********        HELPER FUNCTIONS        *********/
@@ -227,8 +231,10 @@ impl State {
         let mut property_penalty_deduction = 0;
 
         // Deduct $50 per property owned
-        for _ in &property_penalty.current_player().property_rents {
-            property_penalty_deduction += 50;
+        for (_, prop) in &property_penalty.owned_properties {
+            if prop.ownership == property_penalty.current_player_index {
+                property_penalty_deduction += 50;
+            }
         }
         // Only add a new child state if it's different
         if property_penalty_deduction > 0 {
@@ -240,7 +246,7 @@ impl State {
         // Chance card: Pay level 1 rent for 2 rounds
         children.push(State {
             r#type: StateType::Chance(self.r#type.probability() / 21.),
-            lvl1rent_cc: self.players.len() * 2 + 1,
+            lvl1rent_cc: (self.players.len() * 2 + 1) as u8,
             ..self.clone()
         });
 

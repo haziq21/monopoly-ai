@@ -67,9 +67,6 @@ pub enum ChanceCard {
 
 /// A property tile on the board.
 pub struct Property {
-    /// The property's position around the board. 'Go' is at 0
-    /// and 'Mayfair' (the last tile going clockwise) is at 35.
-    pub position: u8,
     /// The color set that the property belongs to.
     pub color: Color,
     /// The price of the property.
@@ -82,9 +79,8 @@ pub struct Property {
 
 impl Property {
     /// Creates a new property.
-    fn new(position: u8, color: Color, price: u16, rents: [u16; 5]) -> Property {
+    fn new(color: Color, price: u16, rents: [u16; 5]) -> Property {
         Property {
-            position,
             color,
             price,
             rents,
@@ -124,9 +120,9 @@ pub struct Player {
     pub balance: u16,
     /// The number of consecutive doubles the player has rolled.
     pub doubles_rolled: u8,
-    /// A hashmap containing the indexes of the properties that
-    /// the player owns in the form `HashMap<index, rent_level>`.
-    pub property_rents: HashMap<usize, u8>,
+    // /// A hashmap containing the indexes of the properties that
+    // /// the player owns in the form `HashMap<index, rent_level>`.
+    // pub property_rents: HashMap<usize, u8>,
 }
 
 impl Player {
@@ -140,7 +136,6 @@ impl Player {
                 position: 0,
                 balance: 1500,
                 doubles_rolled: 0,
-                property_rents: HashMap::new(),
             })
         }
 
@@ -180,31 +175,31 @@ lazy_static! {
     /// Positions of the corners of the game board.
     pub static ref CORNER_POSITIONS: HashSet<u8> = HashSet::from([0, 9, 18, 27]);
 
-    /// All the properties on the game board.
-    pub static ref PROPERTIES: [Property; 22] = [
-        Property::new(1, Color::Brown, 60, [70, 130, 220, 370, 750]),
-        Property::new(3, Color::Brown, 60, [70, 130, 220, 370, 750]),
-        Property::new(5, Color::LightBlue, 100, [80, 140, 240, 410, 800]),
-        Property::new(6, Color::LightBlue, 100, [80, 140, 240, 410, 800]),
-        Property::new(8, Color::LightBlue, 120, [100, 160, 260, 440, 860]),
-        Property::new(10, Color::Pink, 140, [110, 180, 290, 460, 900]),
-        Property::new(12, Color::Pink, 140, [110, 180, 290, 460, 900]),
-        Property::new(13, Color::Pink, 160, [130, 200, 310, 490, 980]),
-        Property::new(14, Color::Orange, 180, [140, 210, 330, 520, 1000]),
-        Property::new(15, Color::Orange, 180, [140, 210, 330, 520, 1000]),
-        Property::new(17, Color::Orange, 200, [160, 230, 350, 550, 1100]),
-        Property::new(19, Color::Red, 220, [170, 250, 380, 580, 1160]),
-        Property::new(21, Color::Red, 220, [170, 250, 380, 580, 1160]),
-        Property::new(22, Color::Red, 240, [190, 270, 400, 610, 1200]),
-        Property::new(23, Color::Yellow, 260, [200, 280, 420, 640, 1300]),
-        Property::new(24, Color::Yellow, 260, [200, 280, 420, 640, 1300]),
-        Property::new(26, Color::Yellow, 280, [220, 300, 440, 670, 1340]),
-        Property::new(28, Color::Green, 300, [230, 320, 460, 700, 1400]),
-        Property::new(30, Color::Green, 300, [230, 320, 460, 700, 1400]),
-        Property::new(31, Color::Green, 320, [250, 340, 480, 730, 1440]),
-        Property::new(33, Color::Blue, 350, [270, 360, 510, 740, 1500]),
-        Property::new(35, Color::Blue, 400, [300, 400, 560, 810, 1600]),
-    ];
+    /// All the properties on the game board, in the form `HashMap<property_position, property>`.
+    pub static ref PROPERTIES: HashMap<u8, Property> = HashMap::from([
+        (1, Property::new(Color::Brown, 60, [70, 130, 220, 370, 750])),
+        (3, Property::new(Color::Brown, 60, [70, 130, 220, 370, 750])),
+        (5, Property::new(Color::LightBlue, 100, [80, 140, 240, 410, 800])),
+        (6, Property::new(Color::LightBlue, 100, [80, 140, 240, 410, 800])),
+        (8, Property::new(Color::LightBlue, 120, [100, 160, 260, 440, 860])),
+        (10, Property::new(Color::Pink, 140, [110, 180, 290, 460, 900])),
+        (12, Property::new(Color::Pink, 140, [110, 180, 290, 460, 900])),
+        (13, Property::new(Color::Pink, 160, [130, 200, 310, 490, 980])),
+        (14, Property::new(Color::Orange, 180, [140, 210, 330, 520, 1000])),
+        (15, Property::new(Color::Orange, 180, [140, 210, 330, 520, 1000])),
+        (17, Property::new(Color::Orange, 200, [160, 230, 350, 550, 1100])),
+        (19, Property::new(Color::Red, 220, [170, 250, 380, 580, 1160])),
+        (21, Property::new(Color::Red, 220, [170, 250, 380, 580, 1160])),
+        (22, Property::new(Color::Red, 240, [190, 270, 400, 610, 1200])),
+        (23, Property::new(Color::Yellow, 260, [200, 280, 420, 640, 1300])),
+        (24, Property::new(Color::Yellow, 260, [200, 280, 420, 640, 1300])),
+        (26, Property::new(Color::Yellow, 280, [220, 300, 440, 670, 1340])),
+        (28, Property::new(Color::Green, 300, [230, 320, 460, 700, 1400])),
+        (30, Property::new(Color::Green, 300, [230, 320, 460, 700, 1400])),
+        (31, Property::new(Color::Green, 320, [250, 340, 480, 730, 1440])),
+        (33, Property::new(Color::Blue, 350, [270, 360, 510, 740, 1500])),
+        (35, Property::new(Color::Blue, 400, [300, 400, 560, 810, 1600])),
+    ]);
 
     /// A vector of all possible dice rolls.
     pub static ref SIGNIFICANT_ROLLS: Vec<DiceRoll> = {
