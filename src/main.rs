@@ -3,6 +3,7 @@
 use bigint::uint::U256;
 use std::collections::HashMap;
 use std::fmt;
+use std::time::Instant;
 
 mod helpers;
 use helpers::*;
@@ -263,6 +264,7 @@ impl State {
 
     /// Return child nodes of the current game state that can be reached from a property tile.
     fn prop_choice_effects(&self) -> Vec<State> {
+        // if self.current_property().unwrap().
         vec![]
     }
 
@@ -375,7 +377,10 @@ impl State {
             self.r#type = StateType::Chance(p - total_children_probability);
         };
 
-        // total_children_probability != self.r#type.probability() when a chance card has no effect.
+        // total_children_probability != self.r#type.probability() when at
+        // least one chance card has no effect. So `self.probability() == 0`
+        // when every chance card has an effect.
+
         // `self` is the state where none of the chance cards apply, so it's the next player's turn.
         self.setup_next_player();
 
@@ -500,6 +505,12 @@ impl State {
     /*********        MINIMAX        *********/
 
     // TODO
+
+    fn static_eval(&self) -> Vec<f64> {
+        vec![1.0]
+    }
+
+    fn minimax(&self, depth: u64) {}
 }
 
 fn print_states(states: &Vec<State>) {
@@ -525,6 +536,8 @@ fn print_states(states: &Vec<State>) {
 }
 
 fn main() {
+    let start = Instant::now();
+
     let mut origin_state = State {
         r#type: StateType::Choice,
         players: Player::multiple_new(2),
@@ -535,5 +548,7 @@ fn main() {
     };
 
     let children = origin_state.children();
+    let duration = start.elapsed();
     print_states(&children);
+    println!("Time elapsed: {:?}", duration);
 }
