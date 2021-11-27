@@ -12,6 +12,7 @@ use helpers::*;
 struct State {
     r#type: StateType,
     players: Vec<Player>,
+    property_owners: HashMap<usize, usize>,
     current_player_index: usize,
     next_move_is_chance: bool,
     active_cc: Option<ChanceCard>,
@@ -57,6 +58,20 @@ impl fmt::Display for State {
 }
 
 impl State {
+    /*********        INITIALISATION INTERFACES        *********/
+
+    fn origin(player_count: u8) -> State {
+        State {
+            r#type: StateType::Choice,
+            players: Player::multiple_new(2),
+            property_owners: HashMap::new(),
+            current_player_index: 0,
+            next_move_is_chance: true,
+            active_cc: None,
+            lvl1rent_cc: 0,
+        }
+    }
+
     /*********        ALIASES (FOR CONVENIECE)        *********/
 
     /// The player whose turn it currently is.
@@ -538,17 +553,10 @@ fn print_states(states: &Vec<State>) {
 fn main() {
     let start = Instant::now();
 
-    let mut origin_state = State {
-        r#type: StateType::Choice,
-        players: Player::multiple_new(2),
-        current_player_index: 0,
-        next_move_is_chance: true,
-        active_cc: None,
-        lvl1rent_cc: 0,
-    };
+    let children = State::origin(2).children();
 
-    let children = origin_state.children();
     let duration = start.elapsed();
+
     print_states(&children);
     println!("Time elapsed: {:?}", duration);
 }
