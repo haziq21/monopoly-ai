@@ -1,6 +1,5 @@
 #![allow(dead_code, unused_mut, unused_variables)]
 
-use bigint::uint::U256;
 use std::collections::HashMap;
 use std::fmt;
 use std::time::Instant;
@@ -177,99 +176,6 @@ impl State {
             .collect()
     }
 
-    /// Return a hash of the current state, used to identify duplicate states.
-    ///
-    /// The layout of the returned `U256`, from right to left, is as follows:
-    /// 1. current player's `in_jail` (1 bit)
-    /// 2. current player's `position` (6 bits)
-    /// 3. current player's `balance` (16 bits)
-    /// 4. current player's `doubles_rolled` (2 bits)
-    /// 5. `active_cc` (4 bits)
-    /// 6. `lvl1rent_cc` (4 bits)   
-    /// 7. Properties and their ownership (132 bits)
-    fn hash(&self, active_player_index: usize) -> U256 {
-        let curr_player = &self.players[active_player_index];
-
-        // U256::from(struct_property) << horizontal_offset_from_right
-        let in_jail = U256::from(curr_player.in_jail as u8) << 0;
-        let position = U256::from(curr_player.position) << 1;
-        let balance = U256::from(curr_player.balance) << 7;
-        let doubles_rolled = U256::from(curr_player.doubles_rolled) << 23;
-        let active_cc = match self.active_cc {
-            Some(cc) => U256::from(cc as u8),
-            None => U256::from(0),
-        } << 25;
-        let lvl1rent_cc = U256::from(self.lvl1rent_cc) << 29;
-
-        // property22_owner (3 bits), property22_rent_level (3 bits), property21_owner, ...
-        let mut props = U256::from(0);
-        for (player_i, player) in self.players.iter().enumerate() {
-            for (prop_i, rent_level) in &player.property_rents {
-                let rent_level_bits = U256::from(*rent_level) << (prop_i * 6);
-                let owner_bits = U256::from(player_i) << (prop_i * 6 + 3);
-
-                props = props | rent_level_bits | owner_bits;
-            }
-        }
-
-        in_jail | position | balance | doubles_rolled | active_cc | lvl1rent_cc | (props << 33)
-    }
-
-    /// Merge the probabilities of duplicate states.
-    // Note: I'm quite sure the only duplicate state that can be generated is when
-    // a player rolls to a chance card tile and gets the "all players to free parking"
-    // card, so this function could probably be reduced to just focus on that. TODO I guess.
-    fn merge_probabilities(states: &mut Vec<State>, current_player_index: usize) {
-        let hashes: Vec<U256> = states
-            .iter()
-            .map(|s| s.hash(current_player_index))
-            .collect();
-        let mut seen: HashMap<U256, Vec<usize>> = HashMap::new();
-
-        // Sort every state index by their identity hash
-        for (hash, index) in hashes.iter().zip(0..states.len()) {
-            if let Some(seen_states) = seen.get_mut(hash) {
-                seen_states.push(index);
-            } else {
-                seen.insert(*hash, vec![index]);
-            }
-        }
-
-        // probabilities: Vec<(state_index, total_probability)>
-        let mut probabilities: Vec<(usize, f64)> = vec![];
-        let mut to_remove: Vec<usize> = vec![];
-
-        // Find the indexes of the duplicates
-        for indexes in seen.values_mut() {
-            if indexes.len() == 1 {
-                continue;
-            }
-
-            // Calculate the total probability
-            let total_probability: f64 = indexes
-                .iter()
-                .map(|&i| states[i].r#type.probability())
-                .sum();
-
-            let extra = &indexes[1..indexes.len()];
-            probabilities.push((indexes[0], total_probability));
-            to_remove.splice(to_remove.len().., extra.iter().cloned());
-        }
-
-        // Merge the duplicate probabilities
-        for (i, p) in probabilities {
-            states[i].r#type = StateType::Chance(p);
-        }
-
-        to_remove.sort_unstable();
-        to_remove.reverse();
-
-        // Remove the duplicates
-        for i in to_remove {
-            states.swap_remove(i);
-        }
-    }
-
     /*********        STATE GENERATION        *********/
 
     /// Return child nodes of the current game state that can be reached from a location tile.
@@ -310,7 +216,7 @@ impl State {
     /// Return child nodes of the current game state that
     /// can be reached by rolling to a chance card tile.
     /// This modifies `self` and is only called in `roll_effects()`.
-    fn roll_to_cc_effects(&mut self) -> Vec<State> {
+    fn cc_chance_effects(&mut self) -> Vec<State> {
         let mut children = vec![];
 
         // Chance card: -$50 per property owned
@@ -338,26 +244,8 @@ impl State {
             ..self.clone()
         });
 
-        // Chance card: Move all players not in jail to free parking
-        let mut all_to_parking = State {
-            r#type: StateType::Chance(self.r#type.probability() / 21.),
-            ..self.clone()
-        };
-        let mut all_to_parking_has_effect = false;
-
-        // Move players to 'free parking'
-        for player in &mut all_to_parking.players {
-            if !player.in_jail {
-                player.position = 18;
-                all_to_parking_has_effect = true;
-            }
-        }
-
-        // Only add a new child state if it's different
-        if all_to_parking_has_effect {
-            all_to_parking.setup_next_player();
-            children.push(all_to_parking);
-        }
+        // The chance card "Move all players not in jail to free parking"
+        // is implemented in `roll_effects()` for optimisation purposes.
 
         // Chance cards that require the player to make a choice
         let choiceful_ccs = [
@@ -381,10 +269,13 @@ impl State {
             });
         }
 
-        let total_children_probability: f64 = children
+        let total_children_probability = children
             .iter()
             .map(|child| child.r#type.probability())
-            .sum();
+            .sum::<f64>()
+            // Add this probability to account for the "all players to jail"
+            // chance card that's implemented in `roll_effects()`
+            + self.r#type.probability() / 21.;
 
         // Correct the current state's probability to
         // account for the chance card child states
@@ -406,16 +297,34 @@ impl State {
     fn roll_effects(&mut self) -> Vec<State> {
         let mut children = vec![];
 
+        // Probability of rolling (without doubles) to a chance
+        // card tile and getting the "all to parking" card
+        let mut atp_singles_probability = 0.;
+        // Probability of rolling (with doubles) to a chance
+        // card tile and getting the "all to parking" card
+        let mut atp_doubles_probability = 0.;
+
         // Performs some other actions before pushing `state` to `children`
-        let mut push_state = |mut state: State| {
-            // PLayer landed on a chance card tile
+        let mut push_state = |mut state: State, rolled_doubles: bool| {
+            // Player landed on a chance card tile
             if CC_POSITIONS.contains(&state.current_player().position) {
+                let atp_probability = state.r#type.probability() / 21.;
+
                 // Effects of rolling to a chance card tile
-                let mut cc_effects = state.roll_to_cc_effects();
+                let mut cc_effects = state.cc_chance_effects();
                 for s in &mut cc_effects {
                     if s.lvl1rent_cc > 0 {
                         s.lvl1rent_cc -= 1
                     }
+                }
+
+                // Chance card: Move all players not in jail to free
+                // parking. This is implemented here (instead of in
+                // `cc_chance_effects()`) for optimisation purposes.
+                if rolled_doubles {
+                    atp_doubles_probability += atp_probability;
+                } else {
+                    atp_singles_probability += atp_probability;
                 }
 
                 children.splice(children.len().., cc_effects);
@@ -463,7 +372,9 @@ impl State {
                 // Update the current player's position
                 new_state.move_by(roll.sum);
 
-                push_state(new_state);
+                // `false` because rolling doubles to get out of
+                // jail doesn't count towards your consecutive doubles
+                push_state(new_state, false);
             }
         }
         // Otherwise, play as normal
@@ -497,13 +408,48 @@ impl State {
                     new_state.current_player().doubles_rolled = 0;
                 }
 
-                push_state(new_state);
+                push_state(new_state, roll.is_double);
             }
+        }
+
+        // Chance card: Move all players not in jail to free parking.
+        // This is implemented here (instead of in
+        // `cc_chance_effects()`) for optimisation purposes.
+
+        // Set up "all to parking"'s single-roll state
+        let mut atp_singles = State {
+            r#type: StateType::Chance(atp_singles_probability),
+            ..self.clone()
+        };
+        atp_singles.current_player().doubles_rolled = 0;
+
+        // Set up "all to parking"'s double-roll state
+        let mut atp_doubles = State {
+            r#type: StateType::Chance(atp_doubles_probability),
+            ..self.clone()
+        };
+        // Note: we know this won't increment to 3 because that logic is already implemented above
+        atp_doubles.current_player().doubles_rolled += 1;
+
+        // Move atp players to 'free parking' and update their `lvl1rent_cc`
+        for mut atp in [atp_singles, atp_doubles] {
+            for player in &mut atp.players {
+                if !player.in_jail {
+                    player.position = 18;
+                }
+            }
+
+            if atp.lvl1rent_cc > 0 {
+                atp.lvl1rent_cc -= 1
+            }
+
+            atp.setup_next_player();
+            children.push(atp);
         }
 
         // The chance card "move all players not in jail to free parking"
         // may generate identical child states, so we have to merge their probabilities
-        State::merge_probabilities(&mut children, self.current_player_index);
+        // State::merge_probabilities(&mut children, self.current_player_index);
 
         children
     }
