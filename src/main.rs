@@ -189,11 +189,19 @@ impl State {
         self.send_to_jail(self.current_player_index)
     }
 
-    fn children_or_clone(&self, children: Vec<State>) -> Vec<State> {
+    fn children_or_choice_clone(&self, children: Vec<State>) -> Vec<State> {
         if children.len() > 0 {
             children
         } else {
-            vec![self.clone()]
+            vec![self.clone_to_choice()]
+        }
+    }
+
+    /// Return a clone of `self` with the state type as `StateType::Choice`.
+    fn clone_to_choice(&self) -> State {
+        State {
+            r#type: StateType::Choice,
+            ..self.clone()
         }
     }
 
@@ -252,13 +260,13 @@ impl State {
 
             // Don't need to add another child node if the rent level is already at its max/min
             if prop.rent_level != n {
-                let mut child = self.clone();
+                let mut child = self.clone_to_choice();
                 child.owned_properties.get_mut(&pos).unwrap().rent_level = n;
                 children.push(child);
             }
         }
 
-        self.children_or_clone(children)
+        self.children_or_choice_clone(children)
     }
 
     fn cc_rent_change_for_set(&self, increase: bool) -> Vec<State> {
@@ -266,7 +274,7 @@ impl State {
 
         // Loop through all the color sets
         for (color, positions) in PROPS_BY_COLOR.iter() {
-            let mut new_state = self.clone();
+            let mut new_state = self.clone_to_choice();
             let mut has_effect = false;
 
             // Loop through all the properties in this color set
@@ -286,14 +294,19 @@ impl State {
             }
         }
 
-        self.children_or_clone(children)
+        self.children_or_choice_clone(children)
     }
 
     fn cc_rent_change_for_side(&self, increase: bool) -> Vec<State> {
         // Possible child states, in clockwise order of affected area.
         // E.g. children[0] is the state where the first side of the board is
         // affected and children[3] is the state where the last side is affected.
-        let mut children = vec![self.clone(), self.clone(), self.clone(), self.clone()];
+        let mut children = vec![
+            self.clone_to_choice(),
+            self.clone_to_choice(),
+            self.clone_to_choice(),
+            self.clone_to_choice(),
+        ];
 
         // Bitmap of whether the states in `children` are any different from `self`.
         // Rightmost bit indicates whether `children[0]` is different from `self` and
@@ -323,7 +336,7 @@ impl State {
             }
         }
 
-        self.children_or_clone(children)
+        self.children_or_choice_clone(children)
     }
 
     fn cc_rent_dec_for_neighbours(&self) -> Vec<State> {
@@ -335,7 +348,7 @@ impl State {
                 continue;
             }
 
-            let mut new_state = self.clone();
+            let mut new_state = self.clone_to_choice();
             let mut has_effect = false;
 
             // Raise this property's rent level
@@ -358,7 +371,7 @@ impl State {
             }
         }
 
-        self.children_or_clone(children)
+        self.children_or_choice_clone(children)
     }
 
     fn cc_bonus(&self) -> Vec<State> {
@@ -370,7 +383,7 @@ impl State {
                 continue;
             }
 
-            let mut new_state = self.clone();
+            let mut new_state = self.clone_to_choice();
 
             // Award $200 bonus to this player
             new_state.current_player().balance += 200;
@@ -403,7 +416,7 @@ impl State {
         // Loop through all the sorted properties
         for my_pos in my_props {
             for opponent_pos in &opponent_props {
-                let mut new_state = self.clone();
+                let mut new_state = self.clone_to_choice();
 
                 // Get the owners of the properties
                 let opponent = new_state.owned_properties[&opponent_pos].owner;
@@ -431,7 +444,7 @@ impl State {
             }
 
             // Send the opponent to jail
-            let mut new_state = self.clone();
+            let mut new_state = self.clone_to_choice();
             new_state.send_to_jail(i);
 
             children.push(new_state);
@@ -446,7 +459,7 @@ impl State {
         let mut children = vec![];
 
         for &pos in PROP_POSITIONS.iter() {
-            let mut new_state = self.clone();
+            let mut new_state = self.clone_to_choice();
 
             // Player can move to any property on the board
             new_state.current_player().position = pos;
@@ -464,7 +477,7 @@ impl State {
         let mut children = vec![];
 
         for &pos in PROP_POSITIONS.iter() {
-            let mut new_state = self.clone();
+            let mut new_state = self.clone_to_choice();
 
             // Play $100
             new_state.current_player().balance -= 100;
@@ -475,7 +488,7 @@ impl State {
         }
 
         // There's also the option to do nothing
-        children.splice(children.len().., vec![self.clone()]);
+        children.splice(children.len().., vec![self.clone_to_choice()]);
 
         children
     }
@@ -483,11 +496,11 @@ impl State {
     /// Return child nodes of the current game state that can be reached by buying or auctioning a property
     fn prop_choice_effects(&mut self) -> Vec<State> {
         // Choose not to buy this property
-        let no_buy = self.clone();
+        let no_buy = self.clone_to_choice();
         // TODO: Implement auctioning
 
         // Choose to buy this property
-        let mut buy_prop = self.clone();
+        let mut buy_prop = self.clone_to_choice();
         buy_prop.owned_properties.insert(
             buy_prop.current_position(),
             OwnedProperty {
