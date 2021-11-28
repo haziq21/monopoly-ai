@@ -216,7 +216,17 @@ impl State {
 
     /// Return child nodes of the current game state that can be reached from a location tile.
     fn loc_choice_effects(&self) -> Vec<State> {
-        vec![]
+        let mut children = vec![];
+
+        for pos in PROP_POSITIONS.iter() {
+            let mut new_state = self.clone();
+            // Player can teleport to any property on the board
+            new_state.current_player().position = *pos;
+            // Effects of landing on the property
+            children.splice(children.len().., new_state.prop_choice_effects());
+        }
+
+        children
     }
 
     /// Return child nodes of the current game state that can be reached by buying or auctioning a property
