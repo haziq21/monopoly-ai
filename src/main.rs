@@ -8,8 +8,12 @@ mod helpers;
 use helpers::*;
 
 #[derive(Copy, Clone, Debug)]
+/// Information about a property related to its ownership.
 struct OwnedProperty {
+    /// The index of the player who owns this property
     owner: usize,
+    /// The rent level of this property.
+    /// Rent level starts at 1 and caps out at 5.
     rent_level: u8,
 }
 
@@ -20,13 +24,25 @@ impl OwnedProperty {
 }
 
 #[derive(Clone, Debug)]
+/// The state of a game as a node on the game tree.
 struct State {
+    /// The type of the state - either chance or choice.
     r#type: StateType,
+    /// The players playing the game
     players: Vec<Player>,
+    /// A hashmap of properties owned by the players, with the
+    /// keys being the position of a property around the board.
     owned_properties: HashMap<u8, OwnedProperty>,
+    /// The index of the player (from `players`) whose turn it currently is.
     current_player_index: usize,
+    /// Whether the child states are achievable through chance
+    /// (dice rolling) or choice (players making decisions).
     next_move_is_chance: bool,
+    /// The choiceful chance card that a player needs to act on in child states.
+    /// This being `Some()` implies that `next_move_is_chance == false`.
     active_cc: Option<ChanceCard>,
+    /// The number of rounds to go before the effect of the chance card
+    /// "all players pay level 1 rent for the next two rounds" wears off.
     lvl1rent_cc: u8,
 }
 
@@ -95,14 +111,14 @@ impl State {
         self.players[self.current_player_index].position
     }
 
-    /// A mutable reference to the property the current player is on.
-    fn current_property(&mut self) -> Option<&Property> {
+    /// The property the current player is on.
+    fn current_property(&self) -> Option<&Property> {
         PROPERTIES.get(&self.current_position())
     }
 
     /// A mutable reference to the owned property the current player is on.
-    fn current_owned_property(&mut self) -> Option<&OwnedProperty> {
-        self.owned_properties.get(&self.current_position())
+    fn current_owned_property(&mut self) -> Option<&mut OwnedProperty> {
+        self.owned_properties.get_mut(&self.current_position())
     }
 
     /*********        HELPER FUNCTIONS        *********/
@@ -203,68 +219,23 @@ impl State {
         vec![]
     }
 
-    /// Return child nodes of the current game state that can be reached from a property tile.
+    /// Return child nodes of the current game state that can be reached by buying or auctioning a property
     fn prop_choice_effects(&mut self) -> Vec<State> {
-        let current_pos = self.current_position();
-        // The owned property that the current player is on
-        let current_owned_property = self.owned_properties.get(&current_pos);
+        // Choose not to buy this property
+        let no_buy = self.clone();
+        // TODO: Implement auctioning
 
-        match current_owned_property {
-            // The player can choose to buy this property
-            None => {
-                // Choose not to buy this property
-                let no_buy = self.clone();
-                // TODO: Implement auctioning
+        // Choose to buy this property
+        let mut buy_prop = self.clone();
+        buy_prop.owned_properties.insert(
+            buy_prop.current_position(),
+            OwnedProperty {
+                owner: buy_prop.current_player_index,
+                rent_level: 1,
+            },
+        );
 
-                // Choose to buy this property
-                let mut buy_prop = self.clone();
-                buy_prop.owned_properties.insert(
-                    current_pos,
-                    OwnedProperty {
-                        owner: buy_prop.current_player_index,
-                        rent_level: 1,
-                    },
-                );
-
-                vec![no_buy, buy_prop]
-            }
-            // The rent level increases because the property is owned by this player
-            Some(prop) if prop.owner == self.current_player_index => {
-                let mut new_state = self.clone();
-                new_state
-                    .owned_properties
-                    .get_mut(&current_pos)
-                    .unwrap()
-                    .raise_rent();
-
-                vec![new_state]
-            }
-            // The player has to pay rent because it's someone else's property
-            Some(prop) => {
-                let mut new_state = self.clone();
-
-                let balance_due = if self.lvl1rent_cc > 0 {
-                    PROPERTIES[&current_pos].rents[0]
-                } else {
-                    PROPERTIES[&current_pos].rents[prop.rent_level as usize]
-                };
-
-                // Pay the owner...
-                new_state.players[prop.owner].balance += balance_due;
-
-                // ...using the current player's money
-                new_state.current_player().balance -= balance_due;
-
-                // Then increase the rent level
-                new_state
-                    .owned_properties
-                    .get_mut(&current_pos)
-                    .unwrap()
-                    .raise_rent();
-
-                vec![]
-            }
-        }
+        vec![no_buy, buy_prop]
     }
 
     /// Return child nodes of the current game state that can be
@@ -296,10 +267,11 @@ impl State {
     /// This modifies `self` and is only called in `roll_effects()`.
     fn cc_chance_effects(&mut self) -> Vec<State> {
         let mut children = vec![];
+        let unit_probability = self.r#type.probability() / 21.;
 
         // Chance card: -$50 per property owned
         let mut property_penalty = State {
-            r#type: StateType::Chance(self.r#type.probability() / 21.),
+            r#type: StateType::Chance(unit_probability),
             ..self.clone()
         };
         let mut property_penalty_deduction = 0;
@@ -319,8 +291,8 @@ impl State {
 
         // Chance card: Pay level 1 rent for 2 rounds
         children.push(State {
-            r#type: StateType::Chance(self.r#type.probability() / 21.),
-            lvl1rent_cc: (self.players.len() * 2 + 1) as u8,
+            r#type: StateType::Chance(unit_probability),
+            lvl1rent_cc: (self.players.len() * 2) as u8,
             ..self.clone()
         });
 
@@ -342,7 +314,7 @@ impl State {
         // Push the child states for all the choiceful chance cards
         for (amount, card) in choiceful_ccs {
             children.push(State {
-                r#type: StateType::Chance(self.r#type.probability() * (amount as f64) / 21.),
+                r#type: StateType::Chance(unit_probability * amount as f64),
                 active_cc: Some(card),
                 next_move_is_chance: false,
                 ..self.clone()
@@ -355,7 +327,7 @@ impl State {
             .sum::<f64>()
             // Add this probability to account for the "all players to jail"
             // chance card that's implemented in `roll_effects()`
-            + self.r#type.probability() / 21.;
+            + unit_probability;
 
         // Correct the current state's probability to
         // account for the chance card child states
@@ -373,6 +345,35 @@ impl State {
         children
     }
 
+    fn in_place_prop_chance_effects(&mut self) {
+        let current_pos = self.current_position();
+
+        if let Some(prop) = self.owned_properties.get(&current_pos) {
+            // The current player owes rent to the owner of this property
+            if prop.owner != self.current_player_index {
+                let balance_due = if self.lvl1rent_cc > 0 {
+                    PROPERTIES[&current_pos].rents[0]
+                } else {
+                    PROPERTIES[&current_pos].rents[prop.rent_level as usize]
+                };
+
+                // Pay the owner...
+                self.players[prop.owner].balance += balance_due;
+                // ...using the current player's money
+                self.current_player().balance -= balance_due;
+            }
+
+            // Raise the rent level
+            self.current_owned_property().unwrap().raise_rent();
+
+            // It's the end of this player's turn
+            self.setup_next_player();
+        } else {
+            // The player has to decide whether to buy or auction
+            self.next_move_is_chance = false;
+        }
+    }
+
     /// Return child nodes of the current game state that can be reached by rolling dice.
     fn roll_effects(&mut self) -> Vec<State> {
         let mut children = vec![];
@@ -386,17 +387,19 @@ impl State {
 
         // Performs some other actions before pushing `state` to `children`
         let mut push_state = |mut state: State, rolled_doubles: bool| {
+            let current_pos = state.current_position();
+            // Player landed on a property tile
+            if PROP_POSITIONS.contains(&current_pos) {
+                state.in_place_prop_chance_effects();
+            }
             // Player landed on a chance card tile
-            if CC_POSITIONS.contains(&state.current_player().position) {
+            else if CC_POSITIONS.contains(&current_pos) {
+                // This line goes above `state.cc_chance_effects()`
+                // since that modifies state.r#type.probability()
                 let atp_probability = state.r#type.probability() / 21.;
 
                 // Effects of rolling to a chance card tile
-                let mut cc_effects = state.cc_chance_effects();
-                for s in &mut cc_effects {
-                    if s.lvl1rent_cc > 0 {
-                        s.lvl1rent_cc -= 1
-                    }
-                }
+                children.splice(children.len().., state.cc_chance_effects());
 
                 // Chance card: Move all players not in jail to free
                 // parking. This is implemented here (instead of in
@@ -407,14 +410,12 @@ impl State {
                     atp_singles_probability += atp_probability;
                 }
 
-                children.splice(children.len().., cc_effects);
-
                 match state.r#type {
                     // No need to push `state` to children if its probability is 0
                     StateType::Chance(p) if p == 0. => return,
                     _ => (),
                 }
-            } else if CORNER_POSITIONS.contains(&state.current_player().position) {
+            } else if CORNER_POSITIONS.contains(&current_pos) {
                 // This tile does nothing so it's the next player's turn
                 state.setup_next_player();
             } else {
@@ -422,6 +423,7 @@ impl State {
                 state.next_move_is_chance = false;
             }
 
+            // The previous round has passed
             if state.lvl1rent_cc > 0 {
                 state.lvl1rent_cc -= 1
             }
@@ -493,8 +495,8 @@ impl State {
         }
 
         // Chance card: Move all players not in jail to free parking.
-        // This is implemented here (instead of in
-        // `cc_chance_effects()`) for optimisation purposes.
+        // This is implemented here (instead of in `cc_chance_effects()`)
+        // for optimisation purposes.
 
         // Set up "all to parking"'s single-roll state
         let mut atp_singles = State {
@@ -526,10 +528,6 @@ impl State {
             atp.setup_next_player();
             children.push(atp);
         }
-
-        // The chance card "move all players not in jail to free parking"
-        // may generate identical child states, so we have to merge their probabilities
-        // State::merge_probabilities(&mut children, self.current_player_index);
 
         children
     }
