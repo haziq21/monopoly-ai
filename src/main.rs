@@ -504,6 +504,7 @@ impl State {
 
         // Choose to buy this property
         let mut buy_prop = self.clone_to_choice();
+        buy_prop.current_player().balance -= PROPERTIES[&buy_prop.current_position()].price;
         buy_prop.owned_properties.insert(
             buy_prop.current_position(),
             OwnedProperty {
