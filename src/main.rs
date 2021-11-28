@@ -58,6 +58,8 @@ struct State {
     /// The number of rounds to go before the effect of the chance card
     /// "all players pay level 1 rent for the next two rounds" wears off.
     lvl1rent_cc: u8,
+    /// The chance cards that have been used, ordered from least recent to most recent.
+    seen_ccs: Vec<ChanceCard>,
 }
 
 impl fmt::Display for State {
@@ -110,6 +112,7 @@ impl State {
             next_move_is_chance: true,
             active_cc: None,
             lvl1rent_cc: 0,
+            seen_ccs: vec![],
         }
     }
 
@@ -540,7 +543,7 @@ impl State {
     /// Return child nodes of the current game state that can be reached by making a choice.
     fn choice_effects(&mut self) -> Vec<State> {
         // The player landed on a location tile
-        if LOC_POSITIONS.contains(&self.current_player().position) {
+        let mut children = if LOC_POSITIONS.contains(&self.current_player().position) {
             self.loc_choice_effects()
         }
         // The player landed on a property tile
@@ -552,7 +555,13 @@ impl State {
             self.cc_choice_effects()
         } else {
             unreachable!();
+        };
+
+        for child in &mut children {
+            child.setup_next_player();
         }
+
+        children
     }
 
     /// Return child nodes of the current game state that
@@ -585,7 +594,7 @@ impl State {
         // Chance card: Pay level 1 rent for 2 rounds
         children.push(State {
             r#type: StateType::Chance(unit_probability),
-            lvl1rent_cc: (self.players.len() * 2) as u8,
+            lvl1rent_cc: (self.players.len() * 2) as u8 + 1,
             ..self.clone()
         });
 
@@ -692,7 +701,14 @@ impl State {
                 let atp_probability = state.r#type.probability() / 21.;
 
                 // Effects of rolling to a chance card tile
-                children.splice(children.len().., state.cc_chance_effects());
+                let mut chance_effects = state.cc_chance_effects();
+                for state in &mut chance_effects {
+                    if state.lvl1rent_cc > 0 {
+                        state.lvl1rent_cc -= 1
+                    }
+                }
+
+                children.splice(children.len().., chance_effects);
 
                 // Chance card: Move all players not in jail to free
                 // parking. This is implemented here (instead of in
@@ -870,7 +886,7 @@ fn print_states(states: &Vec<State>) {
 fn main() {
     let start = Instant::now();
 
-    let children = State::origin(2).children()[1].children();
+    let children = State::origin(2).children()[0].children();
 
     let duration = start.elapsed();
 
