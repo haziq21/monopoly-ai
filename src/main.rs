@@ -18,8 +18,22 @@ struct OwnedProperty {
 }
 
 impl OwnedProperty {
-    fn raise_rent(&mut self) {
-        self.rent_level = 5.min(self.rent_level + 1);
+    fn raise_rent(&mut self) -> bool {
+        if self.rent_level < 5 {
+            self.rent_level += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn lower_rent(&mut self) -> bool {
+        if self.rent_level > 1 {
+            self.rent_level -= 1;
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -121,6 +135,11 @@ impl State {
         self.owned_properties.get_mut(&self.current_position())
     }
 
+    /// The owned property located at `key`.
+    fn owned_prop(&mut self, key: &u8) -> Option<&mut OwnedProperty> {
+        self.owned_properties.get_mut(key)
+    }
+
     /*********        HELPER FUNCTIONS        *********/
 
     /// Move the current player by the specified amount of tiles.
@@ -170,6 +189,14 @@ impl State {
         self.send_to_jail(self.current_player_index)
     }
 
+    fn children_or_clone(&self, children: Vec<State>) -> Vec<State> {
+        if children.len() > 0 {
+            children
+        } else {
+            vec![self.clone()]
+        }
+    }
+
     /// Return every possible result of attempting to roll doubles for a maximum of `tries` times.
     fn roll_for_doubles(tries: i32) -> Vec<DiceRoll> {
         /*
@@ -212,19 +239,243 @@ impl State {
             .collect()
     }
 
+    /*********        CHOICEFUL CHANCE CARD EFFECTS        *********/
+
+    fn cc_rent_level_to(&self, n: u8) -> Vec<State> {
+        let mut children = vec![];
+
+        for (pos, prop) in &self.owned_properties {
+            // "RentLvlTo5" only applies to your properties (not opponents)
+            if n == 5 && prop.owner != self.current_player_index {
+                continue;
+            }
+
+            // Don't need to add another child node if the rent level is already at its max/min
+            if prop.rent_level != n {
+                let mut child = self.clone();
+                child.owned_properties.get_mut(&pos).unwrap().rent_level = n;
+                children.push(child);
+            }
+        }
+
+        self.children_or_clone(children)
+    }
+
+    fn cc_rent_change_for_set(&self, increase: bool) -> Vec<State> {
+        let mut children = vec![];
+
+        // Loop through all the color sets
+        for (color, positions) in PROPS_BY_COLOR.iter() {
+            let mut new_state = self.clone();
+            let mut has_effect = false;
+
+            // Loop through all the properties in this color set
+            for pos in positions {
+                if let Some(prop) = new_state.owned_properties.get_mut(&pos) {
+                    if increase {
+                        has_effect |= prop.raise_rent();
+                    } else {
+                        has_effect |= prop.lower_rent();
+                    }
+                }
+            }
+
+            // Only store the new state if it's different
+            if has_effect {
+                children.push(new_state);
+            }
+        }
+
+        self.children_or_clone(children)
+    }
+
+    fn cc_rent_change_for_side(&self, increase: bool) -> Vec<State> {
+        // Possible child states, in clockwise order of affected area.
+        // E.g. children[0] is the state where the first side of the board is
+        // affected and children[3] is the state where the last side is affected.
+        let mut children = vec![self.clone(), self.clone(), self.clone(), self.clone()];
+
+        // Bitmap of whether the states in `children` are any different from `self`.
+        // Rightmost bit indicates whether `children[0]` is different from `self` and
+        // fourthmost bit from the right indicates whether `children[3]` is different.
+        let mut has_effect: u8 = 0;
+
+        // Loop through the positions of all the owned properties
+        for pos in self.owned_properties.keys() {
+            // The side of the board `pos` is on - 0 is the first side (with 'go'
+            // and 'jail') and 3 is the last side (with 'go to jail' and 'go')
+            let i = pos / 9;
+            let prop = children[i as usize].owned_properties.get_mut(&i).unwrap();
+            let changed = if increase {
+                prop.raise_rent()
+            } else {
+                prop.lower_rent()
+            };
+
+            // Update the bitmap accordingly
+            has_effect |= (changed as u8) << i;
+        }
+
+        // Remove the states that didn't have an effect
+        for c in (0..4).rev() {
+            if has_effect & (1 << c) == 0 {
+                children.swap_remove(c);
+            }
+        }
+
+        self.children_or_clone(children)
+    }
+
+    fn cc_rent_dec_for_neighbours(&self) -> Vec<State> {
+        let mut children = vec![];
+
+        for (pos, prop) in &self.owned_properties {
+            // Skip if this property isn't owned by the current player
+            if prop.owner != self.current_player_index {
+                continue;
+            }
+
+            let mut new_state = self.clone();
+            let mut has_effect = false;
+
+            // Raise this property's rent level
+            has_effect |= new_state
+                .owned_properties
+                .get_mut(&pos)
+                .unwrap()
+                .raise_rent();
+
+            // Lower neighbours' rent levels (if they're owned)
+            for n_pos in PROPERTY_NEIGHBOURS[&pos] {
+                if let Some(n_prop) = new_state.owned_properties.get_mut(&n_pos) {
+                    has_effect |= n_prop.lower_rent();
+                }
+            }
+
+            // Store new state if it's different
+            if has_effect {
+                children.push(new_state);
+            }
+        }
+
+        self.children_or_clone(children)
+    }
+
+    fn cc_bonus(&self) -> Vec<State> {
+        let mut children = vec![];
+
+        for (i, player) in self.players.iter().enumerate() {
+            // Skip the current player
+            if i == self.current_player_index {
+                continue;
+            }
+
+            let mut new_state = self.clone();
+
+            // Award $200 bonus to this player
+            new_state.current_player().balance += 200;
+
+            // Award $200 bonus to an opponent
+            new_state.players[i].balance += 200;
+
+            children.push(new_state);
+        }
+
+        // No need for `self.children_or_clone(children)`
+        // because we know there's at least one opponent
+        children
+    }
+
+    fn cc_swap_property(&self) -> Vec<State> {
+        let mut children = vec![];
+        let mut my_props = vec![];
+        let mut opponent_props = vec![];
+
+        // Loop through all owned properties to sort them out by ownership
+        for (&pos, prop) in &self.owned_properties {
+            if prop.owner == self.current_player_index {
+                my_props.push(pos);
+            } else {
+                opponent_props.push(pos);
+            }
+        }
+
+        // Loop through all the sorted properties
+        for my_pos in my_props {
+            for opponent_pos in &opponent_props {
+                let mut new_state = self.clone();
+
+                // Get the owners of the properties
+                let opponent = new_state.owned_properties[&opponent_pos].owner;
+                let me = new_state.owned_properties[&my_pos].owner;
+                // Swap properties
+                new_state.owned_prop(&my_pos).unwrap().owner = opponent;
+                new_state.owned_prop(&opponent_pos).unwrap().owner = me;
+
+                children.push(new_state);
+            }
+        }
+
+        // No need for `self.children_or_clone(children)`
+        // because we know there's at least one opponent
+        children
+    }
+
+    fn cc_opponent_to_jail(&self) -> Vec<State> {
+        let mut children = vec![];
+
+        for (i, player) in self.players.iter().enumerate() {
+            // Skip the current player
+            if i == self.current_player_index {
+                continue;
+            }
+
+            // Send the opponent to jail
+            let mut new_state = self.clone();
+            new_state.send_to_jail(i);
+
+            children.push(new_state);
+        }
+
+        // No need for `self.children_or_clone(children)`
+        // because we know there's at least one opponent
+        children
+    }
+
+    fn cc_move_to_any_property(&self) -> Vec<State> {
+        let mut children = vec![];
+
+        for &pos in PROP_POSITIONS.iter() {
+            let mut new_state = self.clone();
+
+            // Player can move to any property on the board
+            new_state.current_player().position = pos;
+            // Effects of landing on the property
+            children.splice(children.len().., new_state.prop_choice_effects());
+        }
+
+        children
+    }
+
     /*********        STATE GENERATION        *********/
 
     /// Return child nodes of the current game state that can be reached from a location tile.
     fn loc_choice_effects(&self) -> Vec<State> {
         let mut children = vec![];
 
-        for pos in PROP_POSITIONS.iter() {
+        for &pos in PROP_POSITIONS.iter() {
             let mut new_state = self.clone();
+
+            // Play $100
+            new_state.current_player().balance -= 100;
             // Player can teleport to any property on the board
-            new_state.current_player().position = *pos;
+            new_state.current_player().position = pos;
             // Effects of landing on the property
             children.splice(children.len().., new_state.prop_choice_effects());
         }
+
+        // There's also the option to do nothing
+        children.splice(children.len().., vec![self.clone()]);
 
         children
     }
@@ -251,7 +502,26 @@ impl State {
     /// Return child nodes of the current game state that can be
     /// reached by making a decision from a chance card tile.
     fn cc_choice_effects(&self) -> Vec<State> {
-        vec![]
+        let mut children = match self.active_cc.unwrap() {
+            ChanceCard::RentLvlTo1 => self.cc_rent_level_to(1),
+            ChanceCard::RentLvlTo5 => self.cc_rent_level_to(5),
+            ChanceCard::RentLvlIncForSet => self.cc_rent_change_for_set(true),
+            ChanceCard::RentLvlDecForSet => self.cc_rent_change_for_set(false),
+            ChanceCard::RentLvlIncForBoardSide => self.cc_rent_change_for_side(true),
+            ChanceCard::RentLvlDecForBoardSide => self.cc_rent_change_for_side(false),
+            ChanceCard::RentLvlDecForNeighbours => self.cc_rent_dec_for_neighbours(),
+            ChanceCard::BonusForYouAndOpponent => self.cc_bonus(),
+            ChanceCard::SwapProperty => self.cc_swap_property(),
+            ChanceCard::SendOpponentToJail => self.cc_opponent_to_jail(),
+            ChanceCard::MoveToAnyProperty => self.cc_move_to_any_property(),
+        };
+
+        // Reset the active chance card
+        for child in &mut children {
+            child.active_cc = None;
+        }
+
+        children
     }
 
     /// Return child nodes of the current game state that can be reached by making a choice.
@@ -587,7 +857,7 @@ fn print_states(states: &Vec<State>) {
 fn main() {
     let start = Instant::now();
 
-    let children = State::origin(2).children();
+    let children = State::origin(2).children()[1].children();
 
     let duration = start.elapsed();
 

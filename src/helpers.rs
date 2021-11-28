@@ -13,6 +13,7 @@ pub struct DiceRoll {
     pub is_double: bool,
 }
 
+#[derive(PartialEq, Eq, Hash)]
 /// The color sets of properties.
 pub enum Color {
     Brown,
@@ -199,6 +200,53 @@ lazy_static! {
         (31, Property::new(Color::Green, 320, [250, 340, 480, 730, 1440])),
         (33, Property::new(Color::Blue, 350, [270, 360, 510, 740, 1500])),
         (35, Property::new(Color::Blue, 400, [300, 400, 560, 810, 1600])),
+    ]);
+
+    /// Positions of the properties on the game board, sorted by their color set.
+    pub static ref PROPS_BY_COLOR: HashMap<Color,Vec<u8>> = HashMap::from([
+        (Color::Brown, vec![1, 3]),
+        (Color::LightBlue, vec![5, 6, 8]),
+        (Color::Pink, vec![10, 12, 13]),
+        (Color::Orange, vec![14, 15, 17]),
+        (Color::Red, vec![19, 21, 22]),
+        (Color::Yellow, vec![23, 24, 26]),
+        (Color::Green, vec![28, 30, 31]),
+        (Color::Blue, vec![33, 35]),
+    ]);
+
+    /// Positions of the properties on the game board, sorted by the side of the board they're on.
+    pub static ref PROPS_BY_SIDE: [Vec<u8>; 4] = [
+        vec![1, 3, 5, 6, 8],
+        vec![10, 12, 13, 14, 15, 17],
+        vec![19, 21, 22, 23, 24, 26],
+        vec![28, 30, 31, 33, 35]
+    ];
+
+    /// Neighbours of properties in the form
+    /// `HashMap<prop_pos, [anti_clockwise_neighbour_pos, clockwise_neighbour_pos]>`.
+    pub static ref PROPERTY_NEIGHBOURS: HashMap<u8, [u8; 2]> = HashMap::from([
+        (1, [35, 3]),
+        (3, [1, 5]),
+        (5, [3, 6]),
+        (6, [5, 8]),
+        (8, [6, 10]),
+        (10, [8, 12]),
+        (12, [10, 13]),
+        (13, [12, 14]),
+        (14, [13, 15]),
+        (15, [14, 17]),
+        (17, [15, 19]),
+        (19, [17, 21]),
+        (21, [19, 22]),
+        (22, [21, 23]),
+        (23, [22, 24]),
+        (24, [23, 26]),
+        (26, [24, 28]),
+        (28, [26, 30]),
+        (30, [28, 31]),
+        (31, [30, 33]),
+        (33, [31, 35]),
+        (35, [33, 1])
     ]);
 
     /// A vector of all possible dice rolls.
