@@ -321,7 +321,7 @@ impl State {
             // The side of the board `pos` is on - 0 is the first side (with 'go'
             // and 'jail') and 3 is the last side (with 'go to jail' and 'go')
             let i = pos / 9;
-            let prop = children[i as usize].owned_properties.get_mut(&i).unwrap();
+            let prop = children[i as usize].owned_properties.get_mut(&pos).unwrap();
             let changed = if increase {
                 prop.raise_rent()
             } else {
@@ -474,6 +474,10 @@ impl State {
     }
 
     /*********        STATE GENERATION        *********/
+
+    fn prop_full_effects(&self) -> Vec<State> {
+        vec![]
+    }
 
     /// Return child nodes of the current game state that can be reached from a location tile.
     fn loc_choice_effects(&self) -> Vec<State> {
@@ -639,7 +643,7 @@ impl State {
         };
 
         // total_children_probability != self.r#type.probability() when at
-        // least one chance card has no effect. So `self.probability() == 0`
+        // least one choiceless chance card has no effect. So `self.probability() == 0`
         // when every chance card has an effect.
 
         // `self` is the state where none of the chance cards apply, so it's the next player's turn.
@@ -657,7 +661,7 @@ impl State {
                 let balance_due = if self.lvl1rent_cc > 0 {
                     PROPERTIES[&current_pos].rents[0]
                 } else {
-                    PROPERTIES[&current_pos].rents[prop.rent_level as usize]
+                    PROPERTIES[&current_pos].rents[prop.rent_level as usize - 1]
                 };
 
                 // Pay the owner...
@@ -856,10 +860,34 @@ impl State {
     // TODO
 
     fn static_eval(&self) -> Vec<f64> {
-        vec![1.0]
+        let mut eval = Vec::with_capacity(self.players.len());
+
+        for _ in &self.players {
+            eval.push(1.) // Placeholder
+        }
+
+        eval
     }
 
-    fn minimax(&self, depth: u64) {}
+    fn minimax(&mut self, depth: u64) -> (Vec<f64>, u128) {
+        if depth == 0 {
+            return (self.static_eval(), 0);
+        }
+
+        let mut best_eval = vec![0.; self.players.len()];
+        let children = self.children();
+        let mut total_len = children.len() as u128;
+
+        for mut child in children {
+            let (eval, len) = child.minimax(depth - 1);
+            total_len += len;
+            if best_eval[self.current_player_index] < eval[self.current_player_index] {
+                best_eval = eval;
+            }
+        }
+
+        (best_eval, total_len)
+    }
 }
 
 fn print_states(states: &Vec<State>) {
@@ -887,10 +915,12 @@ fn print_states(states: &Vec<State>) {
 fn main() {
     let start = Instant::now();
 
-    let children = State::origin(2).children()[0].children();
+    // let children = State::origin(2).children()[10].children();
+
+    println!("{}", State::origin(2).minimax(5).1);
 
     let duration = start.elapsed();
 
-    print_states(&children);
+    // print_states(&children);
     println!("Time elapsed: {:?}", duration);
 }
