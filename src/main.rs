@@ -475,8 +475,53 @@ impl State {
 
     /*********        STATE GENERATION        *********/
 
-    fn prop_full_effects(&self) -> Vec<State> {
-        vec![]
+    fn prop_full_effects(&mut self) -> Vec<State> {
+        let current_pos = self.current_position();
+
+        if let Some(prop) = self.owned_properties.get(&current_pos) {
+            let mut new_state = self.clone_to_choice();
+
+            // The current player owes rent to the owner of this property
+            if prop.owner != new_state.current_player_index {
+                let balance_due = if new_state.lvl1rent_cc > 0 {
+                    PROPERTIES[&current_pos].rents[0]
+                } else {
+                    PROPERTIES[&current_pos].rents[prop.rent_level as usize - 1]
+                };
+
+                // Pay the owner...
+                new_state.players[prop.owner].balance += balance_due;
+                // ...using the current player's money
+                new_state.current_player().balance -= balance_due;
+            }
+
+            // Raise the rent level
+            new_state.current_owned_property().unwrap().raise_rent();
+
+            // It's the end of this player's turn
+            new_state.setup_next_player();
+
+            vec![new_state]
+        } else {
+            // Choose not to buy this property
+            let no_buy = self.clone_to_choice();
+            // Auctioning implementation: assume that the player that is likely
+            // to "back out" of the auction the last will win the auction
+            // TODO
+
+            // Choose to buy this property
+            let mut buy_prop = self.clone_to_choice();
+            buy_prop.current_player().balance -= PROPERTIES[&current_pos].price;
+            buy_prop.owned_properties.insert(
+                current_pos,
+                OwnedProperty {
+                    owner: buy_prop.current_player_index,
+                    rent_level: 1,
+                },
+            );
+
+            vec![no_buy, buy_prop]
+        }
     }
 
     /// Return child nodes of the current game state that can be reached from a location tile.
@@ -495,7 +540,7 @@ impl State {
         }
 
         // There's also the option to do nothing
-        children.splice(children.len().., vec![self.clone_to_choice()]);
+        children.push(self.clone_to_choice());
 
         children
     }
