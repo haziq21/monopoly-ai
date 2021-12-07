@@ -36,6 +36,7 @@ pub struct OwnedProperty {
 }
 
 impl OwnedProperty {
+    /// Raise the rent level by one, if possible. Return whether this had any effect.
     fn raise_rent(&mut self) -> bool {
         if self.rent_level < 5 {
             self.rent_level += 1;
@@ -45,6 +46,7 @@ impl OwnedProperty {
         }
     }
 
+    /// Lower the rent level by one, if possible. Return whether this had any effect.
     fn lower_rent(&mut self) -> bool {
         if self.rent_level > 1 {
             self.rent_level -= 1;
@@ -71,13 +73,15 @@ pub struct State {
     /// (dice rolling) or choice (players making decisions).
     pub next_move_is_chance: bool,
     /// The choiceful chance card that a player needs to act on in child states.
-    /// This being `Some()` implies that `next_move_is_chance == false`.
+    /// This being `Some(_)` implies that `next_move_is_chance == false`.
     pub active_cc: Option<ChanceCard>,
     /// The number of rounds to go before the effect of the chance card
     /// "all players pay level 1 rent for the next two rounds" wears off.
     pub lvl1rent_cc: u8,
     /// The chance cards that have been used, ordered from least recent to most recent.
     pub seen_ccs: Vec<ChanceCard>,
+    /// The child nodes of this state.
+    pub children: Vec<State>,
 }
 
 impl fmt::Display for State {
@@ -121,7 +125,8 @@ impl fmt::Display for State {
 impl State {
     /*********        INITIALISATION INTERFACES        *********/
 
-    pub fn origin(player_count: usize) -> State {
+    /// Create a new game state with `player_count` players.
+    pub fn new(player_count: usize) -> State {
         State {
             r#type: StateType::Choice,
             players: Player::multiple_new(player_count),
@@ -131,6 +136,7 @@ impl State {
             active_cc: None,
             lvl1rent_cc: 0,
             seen_ccs: vec![],
+            children: vec![],
         }
     }
 
@@ -210,7 +216,7 @@ impl State {
         self.send_to_jail(self.current_player_index)
     }
 
-    fn children_or_choice_clone(&self, children: Vec<State>) -> Vec<State> {
+    fn or_choice_clone(&self, children: Vec<State>) -> Vec<State> {
         if children.len() > 0 {
             children
         } else {
@@ -219,7 +225,7 @@ impl State {
     }
 
     /// Return a clone of `self` with the state type as `StateType::Choice`.
-    fn clone_to_choice(&self) -> State {
+    pub fn clone_to_choice(&self) -> State {
         State {
             r#type: StateType::Choice,
             ..self.clone()
@@ -231,8 +237,8 @@ impl State {
         /*
          *  Let P(S) be the probability that a double is not attained in one roll.
          *  Let P(r) be the probability of obtaining a specific dice configuration
-         *  `r` after one roll. The return value of `SIGNIFICANT_ROLLS` demonstrates
-         *  all possible "specific dice configurations".
+         *  `r` after one roll. `SIGNIFICANT_ROLLS` demonstrates all possible
+         *  "specific dice configurations".
          *
          *  When rolling the dice for maximum of `n` times, or stopping
          *  when we get doubles, the probabilities work out as follows:
@@ -268,9 +274,6 @@ impl State {
             .collect()
     }
 
-    // Return the index of the player who would most likely "back out" of an auction the last.
-    // fn auction_winner()
-
     /*********        CHOICEFUL CHANCE CARD EFFECTS        *********/
 
     fn cc_rent_level_to(&self, n: u8) -> Vec<State> {
@@ -290,7 +293,7 @@ impl State {
             }
         }
 
-        self.children_or_choice_clone(children)
+        self.or_choice_clone(children)
     }
 
     fn cc_rent_change_for_set(&self, increase: bool) -> Vec<State> {
@@ -318,7 +321,7 @@ impl State {
             }
         }
 
-        self.children_or_choice_clone(children)
+        self.or_choice_clone(children)
     }
 
     fn cc_rent_change_for_side(&self, increase: bool) -> Vec<State> {
@@ -360,7 +363,7 @@ impl State {
             }
         }
 
-        self.children_or_choice_clone(children)
+        self.or_choice_clone(children)
     }
 
     fn cc_rent_dec_for_neighbours(&self) -> Vec<State> {
@@ -395,7 +398,7 @@ impl State {
             }
         }
 
-        self.children_or_choice_clone(children)
+        self.or_choice_clone(children)
     }
 
     fn cc_bonus(&self) -> Vec<State> {
@@ -915,54 +918,22 @@ impl State {
     }
 
     /// Return child nodes of the current game state on the game tree.
-    fn children(&mut self) -> Vec<State> {
-        if self.next_move_is_chance {
+    pub fn get_children(&mut self) -> Vec<State> {
+        let children = if self.next_move_is_chance {
             self.roll_effects()
         } else {
             self.choice_effects()
-        }
+        };
+
+        self.children = children;
+
+        children
     }
 
     /*********        MINIMAX        *********/
-
-    // TODO
-
-    fn single_static_eval(&self, index: usize) -> f64 {
-        1.
-    }
-
-    fn static_eval(&self) -> Vec<f64> {
-        let mut eval = Vec::with_capacity(self.players.len());
-
-        for _ in &self.players {
-            eval.push(1.) // Placeholder
-        }
-
-        eval
-    }
-
-    fn minimax(&mut self, depth: u64) -> (Vec<f64>, u128) {
-        if depth == 0 {
-            return (self.static_eval(), 0);
-        }
-
-        let mut best_eval = vec![0.; self.players.len()];
-        let children = self.children();
-        let mut total_len = children.len() as u128;
-
-        for mut child in children {
-            let (eval, len) = child.minimax(depth - 1);
-            total_len += len;
-            if best_eval[self.current_player_index] < eval[self.current_player_index] {
-                best_eval = eval;
-            }
-        }
-
-        (best_eval, total_len)
-    }
 }
 
-fn print_states(states: &Vec<State>) {
+pub fn print_states(states: &Vec<State>) {
     for child in states {
         println!("{}", child);
     }
