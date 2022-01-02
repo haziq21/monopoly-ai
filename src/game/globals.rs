@@ -106,18 +106,15 @@ pub struct Player {
 impl Player {
     /// Create a vector of players.
     pub fn multiple_new(amount: usize) -> Vec<Player> {
-        let mut players = Vec::with_capacity(amount);
-
-        for _ in 0..amount {
-            players.push(Player {
+        vec![
+            Player {
                 in_jail: false,
                 position: 0,
                 balance: 1500,
                 doubles_rolled: 0,
-            })
-        }
-
-        players
+            };
+            amount
+        ]
     }
 }
 
