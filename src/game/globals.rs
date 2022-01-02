@@ -34,36 +34,36 @@ pub enum Color {
 /// received but no one owns a property yet, do nothing.
 pub enum ChanceCard {
     /// Set any property's rent level to 1.
-    RentLvlTo1 = 1,
+    RentLvlTo1,
     /// Set one of your properties' rent level to 5.
-    RentLvlTo5 = 2,
+    RentLvlTo5,
     /// Choose any color set of which you own a property in, and raise
     /// the rent level of all the properties in that color set by 1.
-    RentLvlIncForSet = 3,
+    RentLvlIncForSet,
     /// Choose any color set of which you own a property in, and lower
     /// the rent level of all the properties in that color set by 1.
-    RentLvlDecForSet = 4,
+    RentLvlDecForSet,
     /// Choose a side of the board of which you own a property on, and
     /// raise the rent level of all the properties on that side by 1.
-    RentLvlIncForBoardSide = 5,
+    RentLvlIncForBoardSide,
     /// Choose a side of the board of which you own a property on, and
     /// lower the rent level of all the properties on that side by 1.
-    RentLvlDecForBoardSide = 6,
+    RentLvlDecForBoardSide,
     /// Raise the rent level of any property you own by 1, and lower the
     /// rent levels of that property's neighbors by 1. Note that "neighbours"
     /// refers to the closest property towards the left and right of the
     /// chosen property, regardless of ownership or distance away.
-    RentLvlDecForNeighbours = 7,
+    RentLvlDecForNeighbours,
     /// You and any opponent you choose recieve $200 from the bank.
-    BonusForYouAndOpponent = 8,
+    BonusForYouAndOpponent,
     /// Exchange the ownership of one of your properties
     /// with one of your opponents' properties.
-    SwapProperty = 9,
+    SwapProperty,
     /// Choose any opponent to send to jail.
-    SendOpponentToJail = 10,
+    SendOpponentToJail,
     /// Move to any property tile around the board and
     /// buy, auction, or raise its rent level by 1.
-    MoveToAnyProperty = 11,
+    MoveToAnyProperty,
 }
 
 /// A property tile on the board.
