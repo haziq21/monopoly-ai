@@ -1,6 +1,8 @@
 mod globals;
-pub use globals::Agent;
 use globals::*;
+
+mod agent;
+pub use agent::Agent;
 
 mod state;
 use state::{OwnedProperty, State, StateType};
@@ -13,7 +15,7 @@ pub struct Game {
 impl Game {
     /*********        OUTWARD-FACING INTERFACES        *********/
 
-    /// Create a new game with `player_count` players.
+    /// Create a new game.
     pub fn new(agents: Vec<Agent>) -> Game {
         let player_count = agents.len();
         Game {

@@ -130,11 +130,6 @@ impl std::fmt::Display for Player {
     }
 }
 
-pub enum Agent {
-    Ai,
-    Human,
-}
-
 /// The number of factors that contribute to a state's static evaluation.
 pub const NUM_FACTORS: usize = 6;
 
