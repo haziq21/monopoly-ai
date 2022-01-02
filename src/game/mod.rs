@@ -35,72 +35,7 @@ impl Game {
 
     /// Return the index of the player who would most likely "back out" of an auction the last.
     fn auction_winner(&self, state: &State, _property_pos: u8) -> usize {
-        fn to_nearest_20(x: u16) -> u16 {
-            (x + 10) / 20 * 20
-        }
-
-        // The greatest prices each player would pay for
-        let mut bail_prices = vec![0; self.player_count()];
-
-        // Loop through all the players
-        for p in 0..state.players.len() {
-            // TODO: Account for property worth
-            // TODO: Account for when max_price < 20
-            let mut upper_bound = state.players[p].balance;
-            let mut lower_bound = 20;
-            let mut target_price = to_nearest_20((20 + upper_bound) / 2);
-
-            // Binary search the property price
-            loop {
-                let p_weights = self.player_weights[p];
-
-                // The evaluation where player `p` wins the auction
-                let win_eval = {
-                    let opp_balance = state.players.iter().map(|p| p.balance).sum::<u16>()
-                        - state.players[p].balance;
-                    let p_balance = state.players[p].balance - target_price;
-                    let eval_balance = (p_balance / opp_balance) as f64 * p_weights[0];
-
-                    eval_balance
-                };
-                // The evaluation where player `p` doesn't win the auction
-                let lose_eval = {
-                    let opp_balance = state.players.iter().map(|p| p.balance).sum::<u16>()
-                        - state.players[p].balance
-                        - target_price;
-                    let p_balance = state.players[p].balance;
-                    let eval_balance = (p_balance / opp_balance) as f64 * p_weights[0];
-
-                    eval_balance
-                };
-
-                if win_eval > lose_eval {
-                    // Narrow the range updwards and adjust the target price
-                    lower_bound = target_price;
-                    target_price = to_nearest_20((lower_bound + upper_bound) / 2);
-                } else if lose_eval > win_eval {
-                    // Narrow the range downwards and adjust the target price
-                    upper_bound = target_price;
-                    target_price = to_nearest_20((lower_bound + upper_bound) / 2);
-
-                    // We have converged
-                    if target_price == upper_bound {
-                        bail_prices[p] = target_price - 20;
-                        break;
-                    }
-                } else {
-                    panic!("lose_eval == win_eval"); // Reachable, but I'll deal with it later
-                }
-            }
-        }
-
-        let winner = bail_prices
-            .iter()
-            .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(index, _)| index);
-
-        winner.unwrap()
+        0
     }
 
     /*********        CHOICEFUL CHANCE CARD EFFECTS        *********/
