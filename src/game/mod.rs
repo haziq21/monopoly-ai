@@ -1,4 +1,5 @@
 mod globals;
+pub use globals::Agent;
 use globals::*;
 
 mod state;
@@ -14,9 +15,10 @@ impl Game {
 
     /// Create a new game with `player_count` players.
     pub fn new(agents: Vec<Agent>) -> Game {
+        let player_count = agents.len();
         Game {
             agents,
-            current_state: Box::new(State::new(agents.len())),
+            current_state: Box::new(State::new(player_count)),
         }
     }
 
@@ -34,7 +36,7 @@ impl Game {
     }
 
     /// Return the index of the player who would most likely "back out" of an auction the last.
-    fn auction_winner(&self, state: &State, _property_pos: u8) -> usize {
+    fn auction_winner(&self) -> usize {
         0
     }
 
@@ -290,7 +292,7 @@ impl Game {
         } else {
             // Choose to auction this property
             let mut no_buy = state.clone_to_choice();
-            let auction_winner = self.auction_winner(&no_buy, current_pos);
+            let auction_winner = self.auction_winner();
             no_buy.players[auction_winner].balance -= PROPERTIES[&current_pos].price;
             no_buy.owned_properties.insert(
                 current_pos,
@@ -342,7 +344,7 @@ impl Game {
 
         // Choose to auction this property
         let mut no_buy = state.clone_to_choice();
-        let auction_winner = self.auction_winner(&no_buy, current_pos);
+        let auction_winner = self.auction_winner();
         no_buy.players[auction_winner].balance -= PROPERTIES[&current_pos].price;
         no_buy.owned_properties.insert(
             current_pos,
