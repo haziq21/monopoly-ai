@@ -1,5 +1,3 @@
-use rand::random;
-
 mod globals;
 use globals::*;
 
@@ -7,40 +5,33 @@ mod state;
 use state::{OwnedProperty, State, StateType};
 
 pub struct Game {
-    pub player_weights: Vec<[f64; NUM_FACTORS]>,
-    pub current_state: Box<state::State>,
+    pub agents: Vec<Agent>,
+    pub current_state: Box<State>,
 }
 
 impl Game {
     /*********        OUTWARD-FACING INTERFACES        *********/
 
     /// Create a new game with `player_count` players.
-    pub fn new(player_count: usize) -> Game {
-        let mut player_weights = Vec::with_capacity(player_count);
-
-        for _ in 0..player_count {
-            player_weights.push(random());
-        }
-
+    pub fn new(agents: Vec<Agent>) -> Game {
         Game {
-            player_weights,
-            current_state: Box::new(State::new(player_count)),
+            agents,
+            current_state: Box::new(State::new(agents.len())),
         }
     }
 
     /// Play the game until it ends.
     pub fn play(&mut self) {
         // Placeholder
-        self.minimax(&mut Box::new(State::new(self.player_count())), 2);
-    }
-
-    /*********        ALIASES        *********/
-
-    fn player_count(&self) -> usize {
-        self.player_weights.len()
+        // self.minimax(&mut Box::new(State::new(self.player_count())), 2);
     }
 
     /*********        HELPER FUNCTIONS        *********/
+
+    /// Number of players playing the game.
+    fn player_count(&self) -> usize {
+        self.agents.len()
+    }
 
     /// Return the index of the player who would most likely "back out" of an auction the last.
     fn auction_winner(&self, state: &State, _property_pos: u8) -> usize {
@@ -779,54 +770,7 @@ impl Game {
         }
     }
 
-    /*********        MINIMAX        *********/
+    /*********        MONTE-CARLO TREE SEARCH        *********/
 
-    /// Return the static evaluation for one player.
-    fn single_static_eval(&self, player_index: usize, state: &Box<State>) -> f64 {
-        let weights = self.player_weights[player_index];
-
-        // let total_balance = self.players.iter().map(|&p| p.balance).sum();
-
-        // The ratio of a player’s balance to the sum of the opponents’ balance
-        state.players[player_index].balance as f64 * weights[0]
-    }
-
-    /// Return the static evaluation of this state. Each evaluation
-    /// is a linear combination of six factors:
-    ///
-    /// 1. The ratio of a player’s balance to the sum of the opponents’ balance.
-    /// 2. The ratio of a player’s net property worth to the sum of the opponents’ net property worth.
-    /// 3. The ratio of the sum of the rents of a player’s properties to the sum of the rents of the opponents’ properties.
-    /// 4. Plys to go until the event card “all players pay rent for two rounds” wears off
-    /// 5. Number of possible event cards that could come up next
-    /// 6. TODO
-    fn static_eval(&self, state: &Box<State>) -> Vec<f64> {
-        let mut eval = Vec::with_capacity(self.player_weights.len());
-
-        for i in 0..self.player_weights.len() {
-            eval.push(self.single_static_eval(i, state))
-        }
-
-        eval
-    }
-
-    fn minimax(&mut self, state: &mut Box<State>, depth: u64) -> (Vec<f64>, u128) {
-        if depth == 0 {
-            return (self.static_eval(&state), 0);
-        }
-
-        let mut best_eval = vec![0.; self.player_count()];
-        self.find_children(state);
-        let mut total_len = state.children.len() as u128;
-
-        for child in &mut state.children {
-            let (eval, len) = self.minimax(child, depth - 1);
-            total_len += len;
-            if best_eval[state.current_player_index] < eval[state.current_player_index] {
-                best_eval = eval;
-            }
-        }
-
-        (best_eval, total_len)
-    }
+    // TODO
 }
