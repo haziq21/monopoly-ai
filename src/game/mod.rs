@@ -1,31 +1,47 @@
+use std::cell::RefCell;
+
 mod globals;
 use globals::*;
 
 mod agent;
-pub use agent::Agent;
+use agent::Agent;
 
 mod state;
 use state::{OwnedProperty, State, StateType};
 
-pub struct Game {
-    pub agents: Vec<Agent>,
-    pub current_state: Box<State>,
+pub struct Game<'a> {
+    pub agents: Vec<Agent<'a>>,
+    pub current_state: RefCell<State>,
+    pub move_history: RefCell<Vec<usize>>,
 }
 
-impl Game {
+impl<'game> Game<'game> {
     /*********        OUTWARD-FACING INTERFACES        *********/
 
     /// Create a new game.
-    pub fn new(agents: Vec<Agent>) -> Game {
-        let player_count = agents.len();
+    pub fn new<'a>(agent_count: usize) -> Game<'a> {
         Game {
-            agents,
-            current_state: Box::new(State::new(player_count)),
+            agents: vec![],
+            current_state: RefCell::new(State::new(agent_count)),
+            move_history: RefCell::new(vec![]),
         }
+    }
+
+    pub fn insert_ai_agent<'a>(&'a mut self) {
+        self.agents
+            .push(Agent::new_ai(&self.current_state, &self.move_history));
+    }
+
+    pub fn insert_human_agent(&mut self) -> &mut Self {
+        self.agents.push(Agent::new_human());
+        self
     }
 
     /// Play the game until it ends.
     pub fn play(&mut self) {
+        if self.agents.len() != self.current_state.borrow().players.len() {
+            panic!("Game.play(): length of `agents` does not match previously specified length")
+        }
         // Placeholder
         // self.minimax(&mut Box::new(State::new(self.player_count())), 2);
     }
@@ -708,8 +724,4 @@ impl Game {
             state.children = children;
         }
     }
-
-    /*********        MONTE-CARLO TREE SEARCH        *********/
-
-    // TODO
 }

@@ -273,6 +273,10 @@ impl State {
             })
             .collect()
     }
+
+    pub fn rollout(&self) -> u8 {
+        0
+    }
 }
 
 pub fn print_states(states: &Vec<Box<State>>) {
