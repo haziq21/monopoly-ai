@@ -141,7 +141,7 @@ impl State {
     }
 
     /// Calculates and stores `state.children` (child nodes of `state` on the game tree).
-    pub fn find_children(&mut self) {
+    pub fn generate_children(&mut self) {
         if self.children.len() == 0 {
             let children = if self.next_move_is_chance {
                 self.roll_effects()
