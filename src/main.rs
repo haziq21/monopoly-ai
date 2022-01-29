@@ -1,8 +1,7 @@
 use std::time::Instant;
 
 mod game;
-use game::Agent;
-use game::Game;
+use game::{Agent, Game};
 
 fn main() {
     let start = Instant::now();
