@@ -28,6 +28,6 @@ impl Game {
     /// Play the game until it ends.
     pub fn play(&mut self) {
         // Placeholder
-        // self.minimax(&mut Box::new(State::new(self.player_count())), 2);
+        self.agents[0].make_choice(&mut self.current_state, &self.move_history);
     }
 }
