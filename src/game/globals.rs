@@ -130,9 +130,6 @@ impl std::fmt::Display for Player {
     }
 }
 
-/// The number of factors that contribute to a state's static evaluation.
-pub const NUM_FACTORS: usize = 6;
-
 /// The number of players playing the game. This should
 /// be between 2 and 4 inclusive, according to the rules.
 pub const NUM_PLAYERS: usize = 2;
