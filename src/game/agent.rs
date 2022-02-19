@@ -125,8 +125,8 @@ impl Agent {
                 .unwrap();
 
             let propagated_value = Agent::mcts_traverse(
-                &mut *state_node.children[child_index],
-                &mut *mcts_node.children[child_index],
+                &mut state_node.children[child_index],
+                &mut mcts_node.children[child_index],
                 temperature,
             );
 
