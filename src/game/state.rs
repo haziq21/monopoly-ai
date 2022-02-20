@@ -154,13 +154,25 @@ impl State {
         };
     }
 
-    /// Return the outcome of an MCTS rollout from this state.
-    pub fn rollout(&mut self) -> u8 {
+    /// Run an MCTS rollout from this state. Return the rollout value for `player`.
+    pub fn rollout(&mut self, player: usize) -> f64 {
         let mut rng = rand::thread_rng();
-        let num_children = self.children.len();
-        let current_state = &mut self.children[rng.gen_range(0..num_children)];
 
-        0
+        // Select a random child state
+        let mut num_children = self.children.len();
+        let mut current_state = &mut self.children[rng.gen_range(0..num_children)];
+
+        // Keep selecting child states until we reach a terminal state
+        while !current_state.is_terminal() {
+            num_children = current_state.children.len();
+            current_state = &mut current_state.children[rng.gen_range(0..num_children)];
+        }
+
+        // Calculate player's final score
+        let total_money: u16 = current_state.players.iter().map(|p| p.balance).sum();
+        let player_money = current_state.players[player].balance;
+
+        player_money as f64 / total_money as f64
     }
 
     /*********        ALIASES (FOR CONVENIECE)        *********/
@@ -191,6 +203,11 @@ impl State {
     }
 
     /*********        HELPER FUNCTIONS        *********/
+
+    /// Whether this state is the end of the game.
+    fn is_terminal(&self) -> bool {
+        self.players.iter().any(|p| p.balance <= 0)
+    }
 
     /// Move the current player by the specified amount of tiles.
     fn move_by(&mut self, amount: u8) {
