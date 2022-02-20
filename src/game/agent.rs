@@ -17,10 +17,12 @@ impl MCTreeNode {
         }
     }
 
+    /// Return `self.total_value / self.num_visits`.
     fn get_average_value(&self) -> f64 {
         self.total_value as f64 / self.num_visits as f64
     }
 
+    /// Return the index of the child with the greatest average value.
     fn get_best_child_index(&self) -> usize {
         self.children
             .iter()
@@ -54,6 +56,19 @@ impl MCTreeNode {
 
         for _ in &state.children {
             self.children.push(Box::new(MCTreeNode::new()))
+        }
+    }
+
+    /// Traverse the tree according to the indexes in `walk`.
+    /// Replace this node with the node at the end of the traversal.
+    fn sync_with_walk(&mut self, walk: &[usize]) {
+        for &step in walk {
+            if self.children.len() == 0 {
+                *self = MCTreeNode::new();
+                break;
+            }
+
+            *self = std::mem::replace(self.children[step].as_mut(), MCTreeNode::new());
         }
     }
 
@@ -131,7 +146,7 @@ pub enum Agent {
         /// Value of `C` constant in UCB1 formula.
         temperature: f64,
         /// Index of the last move that this agent played, from `Game.move_history`.
-        last_move_index: usize,
+        latest_unseen_move: usize,
         /// The Monte-Carlo search tree associated with this AI.
         mcts_tree: MCTreeNode,
     },
@@ -147,7 +162,7 @@ impl Agent {
         Agent::Ai {
             time_limit,
             temperature,
-            last_move_index: 0,
+            latest_unseen_move: 0,
             mcts_tree: MCTreeNode::new(),
         }
     }
@@ -167,23 +182,32 @@ impl Agent {
 
     /*********        PLAYER LOGIC        *********/
 
-    fn ai_choice(&mut self, state_node: &mut State, _move_history: &Vec<usize>) -> usize {
-        let start = Instant::now();
-        let (max_time, temperature, mcts_node) = match self {
+    fn ai_choice(&mut self, state_node: &mut State, move_history: &Vec<usize>) -> usize {
+        let start_time = Instant::now();
+        let (max_time, temperature, latest_unseen_move, mcts_node) = match self {
             Agent::Ai {
                 time_limit,
                 temperature,
+                latest_unseen_move,
                 mcts_tree,
-                ..
-            } => (Duration::from_millis(*time_limit), *temperature, mcts_tree),
+            } => (
+                Duration::from_millis(*time_limit),
+                *temperature,
+                latest_unseen_move,
+                mcts_tree,
+            ),
             _ => unreachable!(),
         };
+
+        // Update mcts_node to reflect the current game state
+        mcts_node.sync_with_walk(&move_history[*latest_unseen_move..]);
+        *latest_unseen_move = move_history.len() + 1;
 
         // Ensure `mcts_node` has all of its direct children
         mcts_node.sync_children_count(state_node);
 
         // Continue searching until time is up
-        while start.elapsed() < max_time {
+        while start_time.elapsed() < max_time {
             mcts_node.traverse(state_node, temperature);
         }
 
