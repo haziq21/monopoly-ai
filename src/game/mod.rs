@@ -16,7 +16,7 @@ impl Game {
     /*********        PUBLIC INTERFACES        *********/
 
     /// Create a new game.
-    pub fn new<'a>(agents: Vec<Agent>) -> Self {
+    pub fn new(agents: Vec<Agent>) -> Self {
         let player_count = agents.len();
         Self {
             agents,
