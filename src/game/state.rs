@@ -159,11 +159,13 @@ impl State {
         let mut rng = rand::thread_rng();
 
         // Select a random child state
+        self.generate_children();
         let mut num_children = self.children.len();
         let mut current_state = &mut self.children[rng.gen_range(0..num_children)];
 
         // Keep selecting child states until we reach a terminal state
         while !current_state.is_terminal() {
+            current_state.generate_children();
             num_children = current_state.children.len();
             current_state = &mut current_state.children[rng.gen_range(0..num_children)];
         }
