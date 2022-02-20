@@ -17,6 +17,23 @@ impl MCTreeNode {
         }
     }
 
+    fn get_average_value(&self) -> f64 {
+        self.total_value as f64 / self.num_visits as f64
+    }
+
+    fn get_best_child_index(&self) -> usize {
+        self.children
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| {
+                a.get_average_value()
+                    .partial_cmp(&b.get_average_value())
+                    .unwrap()
+            })
+            .map(|(i, _)| i)
+            .unwrap()
+    }
+
     /// Generate as many direct child nodes as needed to mirror `state`'s
     /// direct children. This should only be called when this MCTS node
     /// has no children, or has the same amount of children as `state`.
@@ -140,7 +157,7 @@ impl Agent {
         Agent::Human
     }
 
-    /// Let the agent make a move to generate. Return the index from `from_node`'s children resulting state after the agent makes a choice.
+    /// Choose a child of `from_node` to move to. Return the index of that child.
     pub fn make_choice(&mut self, from_node: &mut State, move_history: &Vec<usize>) -> usize {
         match self {
             Agent::Ai { .. } => self.ai_choice(from_node, move_history),
@@ -170,10 +187,8 @@ impl Agent {
             mcts_node.traverse(state_node, temperature);
         }
 
-        0
+        mcts_node.get_best_child_index()
     }
-
-    /*********        FOR HUMAN PLAYERS        *********/
 
     fn human_choice(&self, _from_node: &mut State) -> usize {
         0
