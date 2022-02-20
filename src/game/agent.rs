@@ -17,9 +17,9 @@ impl MCTreeNode {
         }
     }
 
-    /// Generate as many child tree nodes as needed to mirror `state`'s children.
-    /// This should only be called when this MCTS node has no children, or has
-    /// the same amount of children as `state`.
+    /// Generate as many direct child nodes as needed to mirror `state`'s
+    /// direct children. This should only be called when this MCTS node
+    /// has no children, or has the same amount of children as `state`.
     fn sync_children_count(&mut self, state: &State) {
         let mctree_children_count = self.children.len();
         let state_children_count = state.children.len();
@@ -38,6 +38,70 @@ impl MCTreeNode {
         for _ in &state.children {
             self.children.push(Box::new(MCTreeNode::new()))
         }
+    }
+
+    /// Traverse the MCTS tree and create child nodes as needed. Return rollout result.
+    fn traverse(&mut self, state_node: &mut State, temperature: f64) -> u8 {
+        // If `self` is not a leaf node, calculate the UCB1 values of its child nodes
+        if self.children.len() > 0 {
+            // The UCB1 formula is `V_i + C * sqrt( ln(N) / n_i )`
+
+            // mean_value = V_i
+            let mean_value = self.total_value as f64 / self.num_visits as f64;
+
+            // All the UCB1 values of `self`'s children
+            let ucb1_values: Vec<f64> = self
+                .children
+                .iter()
+                .map(|s| {
+                    if self.num_visits == 0 || s.num_visits == 0 {
+                        f64::INFINITY
+                    } else {
+                        mean_value
+                            + temperature
+                                * ((self.num_visits as f64).ln() / s.num_visits as f64).sqrt()
+                    }
+                })
+                .collect();
+
+            // The index of the child to traverse next
+            let child_index = ucb1_values
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .map(|(i, _)| i)
+                .unwrap();
+
+            // Value of the rollout to propagate
+            let propagated_value = self.children[child_index]
+                .traverse(&mut state_node.children[child_index], temperature);
+
+            // Update n and t
+            self.num_visits += 1;
+            self.total_value += propagated_value;
+
+            return propagated_value;
+        }
+
+        // Perform a rollout if the node has never been visited before
+        if self.num_visits == 0 {
+            let rollout_outcome = state_node.rollout();
+
+            // Update n and t
+            self.num_visits += 1;
+            self.total_value += rollout_outcome;
+
+            return rollout_outcome;
+        }
+
+        // Expand the tree and rollout from the first child if
+        // the node is a leaf node that hasn't been visited yet
+        state_node.generate_children();
+
+        // Sync the MCTS tree with the game-state tree
+        self.sync_children_count(state_node);
+
+        state_node.children[0].rollout()
     }
 }
 
@@ -84,7 +148,7 @@ impl Agent {
         }
     }
 
-    /*********        FOR AI PLAYERS        *********/
+    /*********        PLAYER LOGIC        *********/
 
     fn ai_choice(&mut self, state_node: &mut State, _move_history: &Vec<usize>) -> usize {
         let start = Instant::now();
@@ -103,75 +167,10 @@ impl Agent {
 
         // Continue searching until time is up
         while start.elapsed() < max_time {
-            Agent::mcts_traverse(state_node, mcts_node, temperature);
+            mcts_node.traverse(state_node, temperature);
         }
 
         0
-    }
-
-    /// Traverse the MCTS tree from the root node and create child nodes as needed. Return rollout result.
-    fn mcts_traverse(state_node: &mut State, mcts_node: &mut MCTreeNode, temperature: f64) -> u8 {
-        // If mcts_node is not a leaf node, calculate the UCB1 values of its child nodes
-        if mcts_node.children.len() > 0 {
-            // The UCB1 formula is `V_i + C * sqrt( ln(N) / n_i )`
-
-            // mean_value = V_i
-            let mean_value = mcts_node.total_value as f64 / mcts_node.num_visits as f64;
-            // All the UCB1 values with respect to from_node's children
-            let ucb1_values: Vec<f64> = mcts_node
-                .children
-                .iter()
-                .map(|s| {
-                    if mcts_node.num_visits == 0 || s.num_visits == 0 {
-                        f64::INFINITY
-                    } else {
-                        mean_value
-                            + temperature
-                                * ((mcts_node.num_visits as f64).ln() / s.num_visits as f64).sqrt()
-                    }
-                })
-                .collect();
-
-            // The child to select next
-            let child_index = ucb1_values
-                .iter()
-                .enumerate()
-                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-                .map(|(i, _)| i)
-                .unwrap();
-
-            let propagated_value = Agent::mcts_traverse(
-                &mut state_node.children[child_index],
-                &mut mcts_node.children[child_index],
-                temperature,
-            );
-
-            // Update n and t
-            mcts_node.num_visits += 1;
-            mcts_node.total_value += propagated_value;
-
-            return propagated_value;
-        }
-
-        // Perform a rollout if the node has never been visited before
-        if mcts_node.num_visits == 0 {
-            let rollout_outcome = state_node.rollout();
-
-            // Update n and t
-            mcts_node.num_visits += 1;
-            mcts_node.total_value += rollout_outcome;
-
-            return rollout_outcome;
-        }
-
-        // Expand the tree and rollout from the first child if
-        // the node is a leaf node that hasn't been visited yet
-        state_node.generate_children();
-
-        // Sync the MCTS tree with the game-state tree
-        mcts_node.sync_children_count(state_node);
-
-        state_node.children[0].rollout()
     }
 
     /*********        FOR HUMAN PLAYERS        *********/
