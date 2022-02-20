@@ -204,6 +204,7 @@ impl Agent {
         *latest_unseen_move = move_history.len() + 1;
 
         // Ensure `mcts_node` has all of its direct children
+        state_node.generate_children();
         mcts_node.sync_children_count(state_node);
 
         // Continue searching until time is up
