@@ -2,7 +2,7 @@ use super::state::State;
 use std::time::{Duration, Instant};
 
 pub struct MCTreeNode {
-    total_value: u8,
+    total_value: f64,
     num_visits: u32,
     children: Vec<Box<MCTreeNode>>,
 }
@@ -11,7 +11,7 @@ impl MCTreeNode {
     /// Return a new MCTS node with `t` and `n` set to 0.
     fn new() -> MCTreeNode {
         MCTreeNode {
-            total_value: 0,
+            total_value: 0.,
             num_visits: 0,
             children: vec![],
         }
@@ -73,7 +73,7 @@ impl MCTreeNode {
     }
 
     /// Traverse the MCTS tree and create child nodes as needed. Return rollout result.
-    fn traverse(&mut self, state_node: &mut State, temperature: f64) -> u8 {
+    fn traverse(&mut self, state_node: &mut State, agent_index: usize, temperature: f64) -> f64 {
         // If `self` is not a leaf node, calculate the UCB1 values of its child nodes
         if self.children.len() > 0 {
             // The UCB1 formula is `V_i + C * sqrt( ln(N) / n_i )`
@@ -105,8 +105,11 @@ impl MCTreeNode {
                 .unwrap();
 
             // Value of the rollout to propagate
-            let propagated_value = self.children[child_index]
-                .traverse(&mut state_node.children[child_index], temperature);
+            let propagated_value = self.children[child_index].traverse(
+                &mut state_node.children[child_index],
+                agent_index,
+                temperature,
+            );
 
             // Update n and t
             self.num_visits += 1;
@@ -117,7 +120,7 @@ impl MCTreeNode {
 
         // Perform a rollout if the node has never been visited before
         if self.num_visits == 0 {
-            let rollout_outcome = state_node.rollout();
+            let rollout_outcome = state_node.rollout(agent_index);
 
             // Update n and t
             self.num_visits += 1;
@@ -133,7 +136,7 @@ impl MCTreeNode {
         // Sync the MCTS tree with the game-state tree
         self.sync_children_count(state_node);
 
-        state_node.children[0].rollout()
+        state_node.children[0].rollout(agent_index)
     }
 }
 
@@ -145,6 +148,8 @@ pub enum Agent {
         time_limit: u64,
         /// Value of `C` constant in UCB1 formula.
         temperature: f64,
+        /// Index of this agent in `Game.agents`.
+        index: usize,
         /// Index of the last move that this agent played, from `Game.move_history`.
         latest_unseen_move: usize,
         /// The Monte-Carlo search tree associated with this AI.
@@ -158,10 +163,11 @@ impl Agent {
     /*********        PUBLIC INTERFACES        *********/
 
     /// Return a new AI agent.
-    pub fn new_ai(time_limit: u64, temperature: f64) -> Agent {
+    pub fn new_ai(time_limit: u64, temperature: f64, index: usize) -> Agent {
         Agent::Ai {
             time_limit,
             temperature,
+            index,
             latest_unseen_move: 0,
             mcts_tree: MCTreeNode::new(),
         }
@@ -184,15 +190,19 @@ impl Agent {
 
     fn ai_choice(&mut self, state_node: &mut State, move_history: &Vec<usize>) -> usize {
         let start_time = Instant::now();
-        let (max_time, temperature, latest_unseen_move, mcts_node) = match self {
+
+        // Extract relevant fields from agent
+        let (max_time, temperature, agent_index, latest_unseen_move, mcts_node) = match self {
             Agent::Ai {
                 time_limit,
                 temperature,
+                index,
                 latest_unseen_move,
                 mcts_tree,
             } => (
                 Duration::from_millis(*time_limit),
                 *temperature,
+                *index,
                 latest_unseen_move,
                 mcts_tree,
             ),
@@ -201,6 +211,7 @@ impl Agent {
 
         // Update mcts_node to reflect the current game state
         mcts_node.sync_with_walk(&move_history[*latest_unseen_move..]);
+        // Set the lastest unseen move to the move after this one
         *latest_unseen_move = move_history.len() + 1;
 
         // Ensure `mcts_node` has all of its direct children
@@ -209,7 +220,7 @@ impl Agent {
 
         // Continue searching until time is up
         while start_time.elapsed() < max_time {
-            mcts_node.traverse(state_node, temperature);
+            mcts_node.traverse(state_node, agent_index, temperature);
         }
 
         mcts_node.get_best_child_index()
