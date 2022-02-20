@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_mut, unused_variables)]
 
+use rand::Rng;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -27,7 +28,7 @@ impl StateType {
 
 #[derive(Copy, Clone, Debug)]
 /// Information about a property related to its ownership.
-struct OwnedProperty {
+struct PropertyOwnership {
     /// The index of the player who owns this property
     pub owner: usize,
     /// The rent level of this property.
@@ -35,7 +36,7 @@ struct OwnedProperty {
     pub rent_level: u8,
 }
 
-impl OwnedProperty {
+impl PropertyOwnership {
     /// Raise the rent level by one, if possible. Return whether this had any effect.
     pub fn raise_rent(&mut self) -> bool {
         if self.rent_level < 5 {
@@ -61,12 +62,12 @@ impl OwnedProperty {
 /// The state of a game as a node on the game tree.
 pub struct State {
     /// The type of the state - either chance or choice.
-    r#type: StateType,
+    state_type: StateType,
     /// The players playing the game
     players: Vec<Player>,
     /// A hashmap of properties owned by the players, with the
     /// keys being the position of a property around the board.
-    owned_properties: HashMap<u8, OwnedProperty>,
+    owned_properties: HashMap<u8, PropertyOwnership>,
     /// The index of the player (from `players`) whose turn it currently is.
     current_player_index: usize,
     /// Whether the child states are achievable through chance
@@ -86,7 +87,7 @@ pub struct State {
 
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut metadata = match self.r#type {
+        let mut metadata = match self.state_type {
             StateType::Chance(p) => format!("Probability: \x1b[33m{:.2}%\x1b[0m", p * 100.),
             StateType::Choice => String::from("No probability"),
         };
@@ -128,7 +129,7 @@ impl State {
     /// Create a new game state with `player_count` players.
     pub fn new(player_count: usize) -> State {
         State {
-            r#type: StateType::Choice,
+            state_type: StateType::Choice,
             players: Player::multiple_new(player_count),
             owned_properties: HashMap::new(),
             current_player_index: 0,
@@ -142,19 +143,23 @@ impl State {
 
     /// Calculates and stores `state.children` (child nodes of `state` on the game tree).
     pub fn generate_children(&mut self) {
-        if self.children.len() == 0 {
-            let children = if self.next_move_is_chance {
-                self.roll_effects()
-            } else {
-                self.choice_effects()
-            };
-
-            self.children = children;
+        if self.children.len() != 0 {
+            return;
         }
+
+        self.children = if self.next_move_is_chance {
+            self.roll_effects()
+        } else {
+            self.choice_effects()
+        };
     }
 
     /// Return the outcome of an MCTS rollout from this state.
-    pub fn rollout(&self) -> u8 {
+    pub fn rollout(&mut self) -> u8 {
+        let mut rng = rand::thread_rng();
+        let num_children = self.children.len();
+        let current_state = &mut self.children[rng.gen_range(0..num_children)];
+
         0
     }
 
@@ -175,14 +180,14 @@ impl State {
         PROPERTIES.get(&self.current_position())
     }
 
-    /// A mutable reference to the owned property the current player is on.
-    fn current_owned_property(&mut self) -> Option<&mut OwnedProperty> {
+    /// A mutable reference to the ownership information of the property that the current player is on.
+    fn current_owned_property(&mut self) -> Option<&mut PropertyOwnership> {
         self.owned_properties.get_mut(&self.current_position())
     }
 
-    /// The owned property located at `key`.
-    fn owned_prop(&mut self, key: &u8) -> Option<&mut OwnedProperty> {
-        self.owned_properties.get_mut(key)
+    /// The ownership information of the property located at `pos`.
+    fn owned_prop(&mut self, pos: &u8) -> Option<&mut PropertyOwnership> {
+        self.owned_properties.get_mut(pos)
     }
 
     /*********        HELPER FUNCTIONS        *********/
@@ -245,7 +250,7 @@ impl State {
     /// Return a clone of `self` with the state type as `StateType::Choice`.
     fn clone_to_choice(&self) -> State {
         State {
-            r#type: StateType::Choice,
+            state_type: StateType::Choice,
             ..self.clone()
         }
     }
@@ -600,7 +605,7 @@ impl State {
         no_buy.players[auction_winner].balance -= PROPERTIES[&current_pos].price;
         no_buy.owned_properties.insert(
             current_pos,
-            OwnedProperty {
+            PropertyOwnership {
                 owner: auction_winner,
                 rent_level: 1,
             },
@@ -611,7 +616,7 @@ impl State {
         buy_prop.current_player().balance -= PROPERTIES[&buy_prop.current_position()].price;
         buy_prop.owned_properties.insert(
             buy_prop.current_position(),
-            OwnedProperty {
+            PropertyOwnership {
                 owner: buy_prop.current_player_index,
                 rent_level: 1,
             },
@@ -674,11 +679,11 @@ impl State {
     /// This modifies `self` and is only called in `roll_effects()`.
     fn cc_chance_effects(&mut self) -> Vec<Box<State>> {
         let mut children = vec![];
-        let unit_probability = self.r#type.probability() / 21.;
+        let unit_probability = self.state_type.probability() / 21.;
 
         // Chance card: -$50 per property owned
         let mut property_penalty = State {
-            r#type: StateType::Chance(unit_probability),
+            state_type: StateType::Chance(unit_probability),
             ..self.clone()
         };
         let mut property_penalty_deduction = 0;
@@ -698,7 +703,7 @@ impl State {
 
         // Chance card: Pay level 1 rent for 2 rounds
         children.push(Box::new(State {
-            r#type: StateType::Chance(unit_probability),
+            state_type: StateType::Chance(unit_probability),
             lvl1rent_cc: (self.players.len() * 2) as u8 + 1,
             ..self.clone()
         }));
@@ -721,7 +726,7 @@ impl State {
         // Push the child states for all the choiceful chance cards
         for (amount, card) in choiceful_ccs {
             children.push(Box::new(State {
-                r#type: StateType::Chance(unit_probability * amount as f64),
+                state_type: StateType::Chance(unit_probability * amount as f64),
                 active_cc: Some(card),
                 next_move_is_chance: false,
                 ..self.clone()
@@ -730,7 +735,7 @@ impl State {
 
         let total_children_probability = children
             .iter()
-            .map(|child| child.r#type.probability())
+            .map(|child| child.state_type.probability())
             .sum::<f64>()
             // Add this probability to account for the "all players to jail"
             // chance card that's implemented in `roll_effects()`
@@ -738,11 +743,11 @@ impl State {
 
         // Correct the current state's probability to
         // account for the chance card child states
-        if let StateType::Chance(p) = self.r#type {
-            self.r#type = StateType::Chance(p - total_children_probability);
+        if let StateType::Chance(p) = self.state_type {
+            self.state_type = StateType::Chance(p - total_children_probability);
         };
 
-        // total_children_probability != state.r#type.probability() when at
+        // total_children_probability != state.state_type.probability() when at
         // least one choiceless chance card has no effect. So `state.probability() == 0`
         // when every chance card has an effect.
 
@@ -802,8 +807,8 @@ impl State {
             // Player landed on a chance card tile
             else if CC_POSITIONS.contains(&current_pos) {
                 // This line goes above `state.cc_chance_effects()`
-                // since that modifies state.r#type.probability()
-                let atp_probability = s.r#type.probability() / 21.;
+                // since that modifies state.state_type.probability()
+                let atp_probability = s.state_type.probability() / 21.;
 
                 // Effects of rolling to a chance card tile
                 let mut chance_effects = s.cc_chance_effects();
@@ -824,7 +829,7 @@ impl State {
                     atp_singles_probability += atp_probability;
                 }
 
-                match s.r#type {
+                match s.state_type {
                     // No need to push `state` to children if its probability is 0
                     StateType::Chance(p) if p == 0. => return,
                     _ => (),
@@ -855,7 +860,7 @@ impl State {
             for roll in double_probabilities {
                 // Derive a new game state from the current game state
                 let mut new_state = State {
-                    r#type: StateType::Chance(roll.probability),
+                    state_type: StateType::Chance(roll.probability),
                     ..self.clone()
                 };
 
@@ -879,7 +884,7 @@ impl State {
             for roll in &*SIGNIFICANT_ROLLS {
                 // Derive a new game state from the current game state
                 let mut new_state = State {
-                    r#type: StateType::Chance(roll.probability),
+                    state_type: StateType::Chance(roll.probability),
                     ..self.clone()
                 };
 
@@ -914,14 +919,14 @@ impl State {
 
         // Set up "all to parking"'s single-roll state
         let mut atp_singles = State {
-            r#type: StateType::Chance(atp_singles_probability),
+            state_type: StateType::Chance(atp_singles_probability),
             ..self.clone()
         };
         atp_singles.current_player().doubles_rolled = 0;
 
         // Set up "all to parking"'s double-roll state
         let mut atp_doubles = State {
-            r#type: StateType::Chance(atp_doubles_probability),
+            state_type: StateType::Chance(atp_doubles_probability),
             ..self.clone()
         };
         // Note: we know this won't increment to 3 because that logic is already implemented above
@@ -956,7 +961,7 @@ pub fn print_states(states: &Vec<Box<State>>) {
 
     let total_probability: f64 = states
         .iter()
-        .map(|s| match s.r#type {
+        .map(|s| match s.state_type {
             StateType::Chance(p) => p,
             StateType::Choice => 0.,
         })
