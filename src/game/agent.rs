@@ -1,4 +1,5 @@
 use super::state::State;
+use rand::Rng;
 use std::time::{Duration, Instant};
 
 pub struct MCTreeNode {
@@ -157,6 +158,8 @@ pub enum Agent {
     },
     /// A physical human player.
     Human,
+    /// An agent that plays randomly
+    Random,
 }
 
 impl Agent {
@@ -178,11 +181,17 @@ impl Agent {
         Agent::Human
     }
 
+    /// Return an agent that plays randomly.
+    pub fn new_random() -> Agent {
+        Agent::Random
+    }
+
     /// Choose a child of `from_node` to move to. Return the index of that child.
     pub fn make_choice(&mut self, from_node: &mut State, move_history: &Vec<usize>) -> usize {
         match self {
             Agent::Ai { .. } => self.ai_choice(from_node, move_history),
             Agent::Human => self.human_choice(from_node),
+            Agent::Random => self.random_choice(from_node),
         }
     }
 
@@ -228,5 +237,12 @@ impl Agent {
 
     fn human_choice(&self, _from_node: &mut State) -> usize {
         0
+    }
+
+    fn random_choice(&self, state_node: &mut State) -> usize {
+        let mut rng = rand::thread_rng();
+        state_node.generate_children();
+
+        rng.gen_range(0..state_node.children.len())
     }
 }
