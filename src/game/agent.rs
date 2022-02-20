@@ -8,6 +8,7 @@ pub struct MCTreeNode {
 }
 
 impl MCTreeNode {
+    /// Return a new MCTS node with `t` and `n` set to 0.
     fn new() -> MCTreeNode {
         MCTreeNode {
             total_value: 0,
@@ -16,15 +17,27 @@ impl MCTreeNode {
         }
     }
 
-    fn sync_with_state(&mut self, state: &State, walk: &Vec<usize>) {
-        // for step in walk {
-        //     if self.childen.len() > 0 {
-        //         self = &mut *self.childen[*step];
-        //     } else {
-        //         self = &mut MCTreeNode::new(state);
-        //         break;
-        //     }
-        // }
+    /// Generate as many child tree nodes as needed to mirror `state`'s children.
+    /// This should only be called when this MCTS node has no children, or has
+    /// the same amount of children as `state`.
+    fn sync_children_count(&mut self, state: &State) {
+        let mctree_children_count = self.children.len();
+        let state_children_count = state.children.len();
+
+        if mctree_children_count == state_children_count {
+            return;
+        }
+
+        if mctree_children_count != 0 {
+            panic!(
+                "MCTreeNode::sync_children_count() - mctree_children_count == {}",
+                mctree_children_count
+            );
+        }
+
+        for _ in &state.children {
+            self.children.push(Box::new(MCTreeNode::new()))
+        }
     }
 }
 
@@ -71,7 +84,7 @@ impl Agent {
         }
     }
 
-    /*********        DECISION MAKING        *********/
+    /*********        FOR AI PLAYERS        *********/
 
     fn ai_choice(&mut self, state_node: &mut State, _move_history: &Vec<usize>) -> usize {
         let start = Instant::now();
@@ -84,6 +97,9 @@ impl Agent {
             } => (Duration::from_millis(*time_limit), *temperature, mcts_tree),
             _ => unreachable!(),
         };
+
+        // Ensure `mcts_node` has all of its direct children
+        mcts_node.sync_children_count(state_node);
 
         // Continue searching until time is up
         while start.elapsed() < max_time {
@@ -152,13 +168,13 @@ impl Agent {
         // the node is a leaf node that hasn't been visited yet
         state_node.generate_children();
 
-        // Sync the MCTS tree with the game state tree
-        for _ in &state_node.children {
-            mcts_node.children.push(Box::new(MCTreeNode::new()));
-        }
+        // Sync the MCTS tree with the game-state tree
+        mcts_node.sync_children_count(state_node);
 
         state_node.children[0].rollout()
     }
+
+    /*********        FOR HUMAN PLAYERS        *********/
 
     fn human_choice(&self, _from_node: &mut State) -> usize {
         0
