@@ -104,17 +104,14 @@ pub struct Player {
 }
 
 impl Player {
-    /// Create a vector of players.
-    pub fn multiple_new(amount: usize) -> Vec<Player> {
-        vec![
-            Player {
-                in_jail: false,
-                position: 0,
-                balance: 1500,
-                doubles_rolled: 0,
-            };
-            amount
-        ]
+    /// Return a new player.
+    pub fn new() -> Player {
+        Player {
+            in_jail: false,
+            position: 0,
+            balance: 1500,
+            doubles_rolled: 0,
+        }
     }
 }
 

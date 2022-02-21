@@ -130,7 +130,7 @@ impl State {
     pub fn new(player_count: usize) -> State {
         State {
             state_type: StateType::Choice,
-            players: Player::multiple_new(player_count),
+            players: vec![Player::new(); player_count],
             owned_properties: HashMap::new(),
             current_player_index: 0,
             next_move_is_chance: true,
