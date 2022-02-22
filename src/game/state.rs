@@ -187,11 +187,6 @@ impl State {
         self.players[self.current_player_index].position
     }
 
-    /// The property the current player is on.
-    fn current_property(&self) -> Option<&Property> {
-        PROPERTIES.get(&self.current_position())
-    }
-
     /// A mutable reference to the ownership information of the property that the current player is on.
     fn current_owned_property(&mut self) -> Option<&mut PropertyOwnership> {
         self.owned_properties.get_mut(&self.current_position())
@@ -966,27 +961,5 @@ impl State {
         }
 
         children
-    }
-}
-
-pub fn print_states(states: &Vec<Box<State>>) {
-    for child in states {
-        println!("{}", child);
-    }
-
-    println!("{} total child states", states.len());
-
-    let total_probability: f64 = states
-        .iter()
-        .map(|s| match s.state_type {
-            StateType::Chance(p) => p,
-            StateType::Choice => 0.,
-        })
-        .sum();
-
-    if total_probability != 0. {
-        println!("Total probability: {}", total_probability);
-    } else {
-        println!("No total probability")
     }
 }
