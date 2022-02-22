@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_mut, unused_variables)]
-
 use rand::Rng;
 use std::collections::HashMap;
 use std::fmt;
