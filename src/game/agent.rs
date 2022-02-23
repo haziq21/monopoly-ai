@@ -1,4 +1,4 @@
-use super::state::State;
+use super::StateDiff;
 use rand::Rng;
 use std::time::{Duration, Instant};
 
@@ -40,7 +40,7 @@ impl MCTreeNode {
     /// Generate as many direct child nodes as needed to mirror `state`'s
     /// direct children. This should only be called when this MCTS node
     /// has no children, or has the same amount of children as `state`.
-    fn sync_children_count(&mut self, state: &State) {
+    fn sync_children_count(&mut self, state: &StateDiff) {
         let mctree_children_count = self.children.len();
         let state_children_count = state.children.len();
 
@@ -74,7 +74,12 @@ impl MCTreeNode {
     }
 
     /// Traverse the MCTS tree and create child nodes as needed. Return rollout result.
-    fn traverse(&mut self, state_node: &mut State, agent_index: usize, temperature: f64) -> f64 {
+    fn traverse(
+        &mut self,
+        state_node: &mut StateDiff,
+        agent_index: usize,
+        temperature: f64,
+    ) -> f64 {
         // If `self` is not a leaf node, calculate the UCB1 values of its child nodes
         if self.children.len() > 0 {
             // The UCB1 formula is `V_i + C * sqrt( ln(N) / n_i )`
@@ -187,7 +192,7 @@ impl Agent {
     }
 
     /// Choose a child of `from_node` to move to. Return the index of that child.
-    pub fn make_choice(&mut self, from_node: &mut State, move_history: &Vec<usize>) -> usize {
+    pub fn make_choice(&mut self, from_node: &mut StateDiff, move_history: &Vec<usize>) -> usize {
         match self {
             Agent::Ai { .. } => self.ai_choice(from_node, move_history),
             Agent::Human => self.human_choice(from_node),
@@ -197,7 +202,7 @@ impl Agent {
 
     /*********        PLAYER LOGIC        *********/
 
-    fn ai_choice(&mut self, state_node: &mut State, move_history: &Vec<usize>) -> usize {
+    fn ai_choice(&mut self, state_node: &mut StateDiff, move_history: &Vec<usize>) -> usize {
         let start_time = Instant::now();
 
         // Extract relevant fields from agent
@@ -235,11 +240,11 @@ impl Agent {
         mcts_node.get_best_child_index()
     }
 
-    fn human_choice(&self, _from_node: &mut State) -> usize {
+    fn human_choice(&self, _from_node: &mut StateDiff) -> usize {
         0
     }
 
-    fn random_choice(&self, state_node: &mut State) -> usize {
+    fn random_choice(&self, state_node: &mut StateDiff) -> usize {
         let mut rng = rand::thread_rng();
         state_node.generate_children();
 

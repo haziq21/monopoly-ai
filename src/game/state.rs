@@ -58,7 +58,7 @@ impl PropertyOwnership {
 
 #[derive(Clone, Debug)]
 /// The state of a game as a node on the game tree.
-pub struct State {
+pub struct StateDiff {
     /// The type of the state - either chance or choice.
     state_type: StateType,
     /// The players playing the game
@@ -80,10 +80,10 @@ pub struct State {
     /// The chance cards that have been used, ordered from least recent to most recent.
     seen_ccs: Vec<ChanceCard>,
     /// The child nodes of this state.
-    pub children: Vec<Box<State>>,
+    pub children: Vec<Box<StateDiff>>,
 }
 
-impl fmt::Display for State {
+impl fmt::Display for StateDiff {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut metadata = match self.state_type {
             StateType::Chance(p) => format!("Probability: \x1b[33m{:.2}%\x1b[0m", p * 100.),
@@ -121,12 +121,12 @@ impl fmt::Display for State {
     }
 }
 
-impl State {
+impl StateDiff {
     /*********        PUBLIC INTERFACES        *********/
 
     /// Create a new game state with `player_count` players.
-    pub fn new(player_count: usize) -> State {
-        State {
+    pub fn new(player_count: usize) -> StateDiff {
+        StateDiff {
             state_type: StateType::Choice,
             players: vec![Player::new(); player_count],
             owned_properties: HashMap::new(),
@@ -251,7 +251,7 @@ impl State {
         self.send_to_jail(self.current_player_index)
     }
 
-    fn or_choice_clone(&self, children: Vec<Box<State>>) -> Vec<Box<State>> {
+    fn or_choice_clone(&self, children: Vec<Box<StateDiff>>) -> Vec<Box<StateDiff>> {
         if children.len() > 0 {
             children
         } else {
@@ -260,8 +260,8 @@ impl State {
     }
 
     /// Return a clone of `self` with the state type as `StateType::Choice`.
-    fn clone_to_choice(&self) -> State {
-        State {
+    fn clone_to_choice(&self) -> StateDiff {
+        StateDiff {
             state_type: StateType::Choice,
             ..self.clone()
         }
@@ -311,7 +311,7 @@ impl State {
 
     /*********        CHOICEFUL CHANCE CARD EFFECTS        *********/
 
-    fn cc_rent_level_to(&self, n: u8) -> Vec<Box<State>> {
+    fn cc_rent_level_to(&self, n: u8) -> Vec<Box<StateDiff>> {
         let mut children = vec![];
 
         for (pos, prop) in &self.owned_properties {
@@ -331,7 +331,7 @@ impl State {
         self.or_choice_clone(children)
     }
 
-    fn cc_rent_change_for_set(&self, increase: bool) -> Vec<Box<State>> {
+    fn cc_rent_change_for_set(&self, increase: bool) -> Vec<Box<StateDiff>> {
         let mut children = vec![];
 
         // Loop through all the color sets
@@ -359,7 +359,7 @@ impl State {
         self.or_choice_clone(children)
     }
 
-    fn cc_rent_change_for_side(&self, increase: bool) -> Vec<Box<State>> {
+    fn cc_rent_change_for_side(&self, increase: bool) -> Vec<Box<StateDiff>> {
         // Possible child states, in clockwise order of affected area.
         // E.g. children[0] is the state where the first side of the board is
         // affected and children[3] is the state where the last side is affected.
@@ -396,7 +396,7 @@ impl State {
         self.or_choice_clone(children)
     }
 
-    fn cc_rent_dec_for_neighbours(&self) -> Vec<Box<State>> {
+    fn cc_rent_dec_for_neighbours(&self) -> Vec<Box<StateDiff>> {
         let mut children = vec![];
 
         for (pos, prop) in &self.owned_properties {
@@ -431,7 +431,7 @@ impl State {
         self.or_choice_clone(children)
     }
 
-    fn cc_bonus(&self) -> Vec<Box<State>> {
+    fn cc_bonus(&self) -> Vec<Box<StateDiff>> {
         let mut children = vec![];
 
         for i in 0..self.players.len() {
@@ -456,7 +456,7 @@ impl State {
         children
     }
 
-    fn cc_swap_property(&self) -> Vec<Box<State>> {
+    fn cc_swap_property(&self) -> Vec<Box<StateDiff>> {
         let mut children = vec![];
         let mut my_props = vec![];
         let mut opponent_props = vec![];
@@ -491,7 +491,7 @@ impl State {
         children
     }
 
-    fn cc_opponent_to_jail(&self) -> Vec<Box<State>> {
+    fn cc_opponent_to_jail(&self) -> Vec<Box<StateDiff>> {
         let mut children = vec![];
 
         for i in 0..self.players.len() {
@@ -512,7 +512,7 @@ impl State {
         children
     }
 
-    fn cc_move_to_any_property(&self) -> Vec<Box<State>> {
+    fn cc_move_to_any_property(&self) -> Vec<Box<StateDiff>> {
         let mut children = vec![];
 
         for &pos in PROP_POSITIONS.iter() {
@@ -531,7 +531,7 @@ impl State {
 
     /// This function requires access to the player weights (for auctioning),
     /// which is why state generation is implemented on `Game` rather than on `State`.
-    fn prop_full_effects(&self) -> Vec<Box<State>> {
+    fn prop_full_effects(&self) -> Vec<Box<StateDiff>> {
         let current_pos = self.current_position();
 
         if let Some(prop) = self.owned_properties.get(&current_pos) {
@@ -587,7 +587,7 @@ impl State {
     }
 
     /// Return child nodes of a game state that can be reached from a location tile.
-    fn loc_choice_effects(&self) -> Vec<Box<State>> {
+    fn loc_choice_effects(&self) -> Vec<Box<StateDiff>> {
         let mut children = vec![];
 
         for &pos in PROP_POSITIONS.iter() {
@@ -608,7 +608,7 @@ impl State {
     }
 
     /// Return child nodes of a game state that can be reached by buying or auctioning a property
-    fn prop_choice_effects(&self) -> Vec<Box<State>> {
+    fn prop_choice_effects(&self) -> Vec<Box<StateDiff>> {
         let current_pos = self.current_position();
 
         // Choose to auction this property
@@ -639,7 +639,7 @@ impl State {
 
     /// Return child nodes of the current game state that can be
     /// reached by making a decision from a chance card tile.
-    fn cc_choice_effects(&self) -> Vec<Box<State>> {
+    fn cc_choice_effects(&self) -> Vec<Box<StateDiff>> {
         let mut children = match self.active_cc.unwrap() {
             ChanceCard::RentLvlTo1 => self.cc_rent_level_to(1),
             ChanceCard::RentLvlTo5 => self.cc_rent_level_to(5),
@@ -663,7 +663,7 @@ impl State {
     }
 
     /// Return child nodes of the current game state that can be reached by making a choice.
-    fn choice_effects(&self) -> Vec<Box<State>> {
+    fn choice_effects(&self) -> Vec<Box<StateDiff>> {
         // The player landed on a location tile
         let mut children = if LOC_POSITIONS.contains(&self.current_position()) {
             self.loc_choice_effects()
@@ -689,12 +689,12 @@ impl State {
     /// Return child nodes of the current game state that
     /// can be reached by rolling to a chance card tile.
     /// This modifies `self` and is only called in `roll_effects()`.
-    fn cc_chance_effects(&mut self) -> Vec<Box<State>> {
+    fn cc_chance_effects(&mut self) -> Vec<Box<StateDiff>> {
         let mut children = vec![];
         let unit_probability = self.state_type.probability() / 21.;
 
         // Chance card: -$50 per property owned
-        let mut property_penalty = State {
+        let mut property_penalty = StateDiff {
             state_type: StateType::Chance(unit_probability),
             ..self.clone()
         };
@@ -714,7 +714,7 @@ impl State {
         }
 
         // Chance card: Pay level 1 rent for 2 rounds
-        children.push(Box::new(State {
+        children.push(Box::new(StateDiff {
             state_type: StateType::Chance(unit_probability),
             lvl1rent_cc: (self.players.len() * 2) as u8 + 1,
             ..self.clone()
@@ -737,7 +737,7 @@ impl State {
 
         // Push the child states for all the choiceful chance cards
         for (amount, card) in choiceful_ccs {
-            children.push(Box::new(State {
+            children.push(Box::new(StateDiff {
                 state_type: StateType::Chance(unit_probability * amount as f64),
                 active_cc: Some(card),
                 next_move_is_chance: false,
@@ -799,7 +799,7 @@ impl State {
     }
 
     /// Return child nodes of the current game state that can be reached by rolling dice.
-    fn roll_effects(&self) -> Vec<Box<State>> {
+    fn roll_effects(&self) -> Vec<Box<StateDiff>> {
         let mut children = vec![];
 
         // Probability of rolling (without doubles) to a chance
@@ -810,7 +810,7 @@ impl State {
         let mut atp_doubles_probability = 0.;
 
         // Performs some other actions before pushing `state` to `children`
-        let mut push_state = |mut s: State, rolled_doubles: bool| {
+        let mut push_state = |mut s: StateDiff, rolled_doubles: bool| {
             let current_pos = s.current_position();
             // Player landed on a property tile
             if PROP_POSITIONS.contains(&current_pos) {
@@ -866,12 +866,12 @@ impl State {
         // Get the player out of jail if they're in jail
         if self.players[self.current_player_index].in_jail {
             // Try rolling doubles to get out of jail
-            let double_probabilities = State::roll_for_doubles(3);
+            let double_probabilities = StateDiff::roll_for_doubles(3);
 
             // Loop through all possible dice results
             for roll in double_probabilities {
                 // Derive a new game state from the current game state
-                let mut new_state = State {
+                let mut new_state = StateDiff {
                     state_type: StateType::Chance(roll.probability),
                     ..self.clone()
                 };
@@ -895,7 +895,7 @@ impl State {
             // Loop through all possible dice results
             for roll in &*SIGNIFICANT_ROLLS {
                 // Derive a new game state from the current game state
-                let mut new_state = State {
+                let mut new_state = StateDiff {
                     state_type: StateType::Chance(roll.probability),
                     ..self.clone()
                 };
@@ -930,14 +930,14 @@ impl State {
         // for optimisation purposes.
 
         // Set up "all to parking"'s single-roll state
-        let mut atp_singles = State {
+        let mut atp_singles = StateDiff {
             state_type: StateType::Chance(atp_singles_probability),
             ..self.clone()
         };
         atp_singles.current_player().doubles_rolled = 0;
 
         // Set up "all to parking"'s double-roll state
-        let mut atp_doubles = State {
+        let mut atp_doubles = StateDiff {
             state_type: StateType::Chance(atp_doubles_probability),
             ..self.clone()
         };
