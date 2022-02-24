@@ -1,4 +1,5 @@
 use super::globals::*;
+use super::Game;
 use std::collections::HashMap;
 
 /*********        BRANCH TYPE        *********/
@@ -60,12 +61,14 @@ impl PropertyOwnership {
 
 /*********        FIELD DIFF        *********/
 
-/// A field or property of a game state.
+/// A field or property of a game state. There are 8 different fields (8 variants of this enum).
 enum FieldDiff {
     /// The type of branch that led to a game state.
     BranchType(BranchType),
     /// The players playing the game.
     Players(Vec<Player>),
+    /// The index of the player whose turn it currently is.
+    CurrentPlayer(usize),
     /// A hashmap of properties owned by the players, with the
     /// keys being the position of a property around the board.
     OwnedProperties(HashMap<u8, PropertyOwnership>),
@@ -92,4 +95,12 @@ impl StateDiff {
             children: vec![],
         }
     }
+
+    /// Return child states that can be reached by rolling dice from this state.
+    pub fn chance_children(&self, all_nodes: &mut Game) -> Vec<StateDiff> {
+        vec![]
+    }
+
+    /*********        STATE FIELD GETTERS        *********/
+    /*********        OTHER GETTERS        *********/
 }

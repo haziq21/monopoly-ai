@@ -1,4 +1,4 @@
-use super::StateDiff;
+use super::{Game, StateDiff};
 use rand::Rng;
 use std::time::{Duration, Instant};
 

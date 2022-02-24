@@ -18,7 +18,7 @@ pub struct Game {
     /// These states can be safely replaced by newer states.
     dirty_states: Vec<usize>,
     /// The index of the state the game is currently at.
-    current_state: usize,
+    current_handle: usize,
 }
 
 impl Game {
@@ -32,12 +32,20 @@ impl Game {
             move_history: vec![],
             state_nodes: vec![StateDiff::new(player_count)],
             dirty_states: vec![],
-            current_state: 0,
+            current_handle: 0,
         }
     }
 
     /// Play the game until it ends.
     pub fn play(&mut self) {
         // Placeholder
+        self.current_state().chance_children(self);
+    }
+
+    /*********        GETTERS        *********/
+
+    /// Return an immutable reference to the current game state.
+    fn current_state(&self) -> &StateDiff {
+        &self.state_nodes[self.current_handle]
     }
 }
