@@ -1,4 +1,6 @@
-use super::{Game, StateDiff};
+// REMOVE ME WHEN RE-IMPLEMENTING AGENT LOGIC
+#![allow(dead_code, unused_imports, unused_variables)]
+use super::StateDiff;
 use rand::Rng;
 use std::time::{Duration, Instant};
 
@@ -37,113 +39,113 @@ impl MCTreeNode {
             .unwrap()
     }
 
-    /// Generate as many direct child nodes as needed to mirror `state`'s
-    /// direct children. This should only be called when this MCTS node
-    /// has no children, or has the same amount of children as `state`.
-    fn sync_children_count(&mut self, state: &StateDiff) {
-        let mctree_children_count = self.children.len();
-        let state_children_count = state.children.len();
+    // /// Generate as many direct child nodes as needed to mirror `state`'s
+    // /// direct children. This should only be called when this MCTS node
+    // /// has no children, or has the same amount of children as `state`.
+    // fn sync_children_count(&mut self, state: &StateDiff) {
+    //     let mctree_children_count = self.children.len();
+    //     let state_children_count = state.children.len();
 
-        if mctree_children_count == state_children_count {
-            return;
-        }
+    //     if mctree_children_count == state_children_count {
+    //         return;
+    //     }
 
-        if mctree_children_count != 0 {
-            panic!(
-                "MCTreeNode::sync_children_count() - mctree_children_count == {}",
-                mctree_children_count
-            );
-        }
+    //     if mctree_children_count != 0 {
+    //         panic!(
+    //             "MCTreeNode::sync_children_count() - mctree_children_count == {}",
+    //             mctree_children_count
+    //         );
+    //     }
 
-        for _ in &state.children {
-            self.children.push(Box::new(MCTreeNode::new()))
-        }
-    }
+    //     for _ in &state.children {
+    //         self.children.push(Box::new(MCTreeNode::new()))
+    //     }
+    // }
 
-    /// Traverse the tree according to the indexes in `walk`.
-    /// Replace this node with the node at the end of the traversal.
-    fn sync_with_walk(&mut self, walk: &[usize]) {
-        for &step in walk {
-            if self.children.len() == 0 {
-                *self = MCTreeNode::new();
-                break;
-            }
+    // /// Traverse the tree according to the indexes in `walk`.
+    // /// Replace this node with the node at the end of the traversal.
+    // fn sync_with_walk(&mut self, walk: &[usize]) {
+    //     for &step in walk {
+    //         if self.children.len() == 0 {
+    //             *self = MCTreeNode::new();
+    //             break;
+    //         }
 
-            *self = std::mem::replace(self.children[step].as_mut(), MCTreeNode::new());
-        }
-    }
+    //         *self = std::mem::replace(self.children[step].as_mut(), MCTreeNode::new());
+    //     }
+    // }
 
-    /// Traverse the MCTS tree and create child nodes as needed. Return rollout result.
-    fn traverse(
-        &mut self,
-        state_node: &mut StateDiff,
-        agent_index: usize,
-        temperature: f64,
-    ) -> f64 {
-        // If `self` is not a leaf node, calculate the UCB1 values of its child nodes
-        if self.children.len() > 0 {
-            // The UCB1 formula is `V_i + C * sqrt( ln(N) / n_i )`
+    // /// Traverse the MCTS tree and create child nodes as needed. Return rollout result.
+    // fn traverse(
+    //     &mut self,
+    //     state_node: &mut StateDiff,
+    //     agent_index: usize,
+    //     temperature: f64,
+    // ) -> f64 {
+    //     // If `self` is not a leaf node, calculate the UCB1 values of its child nodes
+    //     if self.children.len() > 0 {
+    //         // The UCB1 formula is `V_i + C * sqrt( ln(N) / n_i )`
 
-            // mean_value = V_i
-            let mean_value = self.total_value as f64 / self.num_visits as f64;
+    //         // mean_value = V_i
+    //         let mean_value = self.total_value as f64 / self.num_visits as f64;
 
-            // All the UCB1 values of `self`'s children
-            let ucb1_values: Vec<f64> = self
-                .children
-                .iter()
-                .map(|s| {
-                    if self.num_visits == 0 || s.num_visits == 0 {
-                        f64::INFINITY
-                    } else {
-                        mean_value
-                            + temperature
-                                * ((self.num_visits as f64).ln() / s.num_visits as f64).sqrt()
-                    }
-                })
-                .collect();
+    //         // All the UCB1 values of `self`'s children
+    //         let ucb1_values: Vec<f64> = self
+    //             .children
+    //             .iter()
+    //             .map(|s| {
+    //                 if self.num_visits == 0 || s.num_visits == 0 {
+    //                     f64::INFINITY
+    //                 } else {
+    //                     mean_value
+    //                         + temperature
+    //                             * ((self.num_visits as f64).ln() / s.num_visits as f64).sqrt()
+    //                 }
+    //             })
+    //             .collect();
 
-            // The index of the child to traverse next
-            let child_index = ucb1_values
-                .iter()
-                .enumerate()
-                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-                .map(|(i, _)| i)
-                .unwrap();
+    //         // The index of the child to traverse next
+    //         let child_index = ucb1_values
+    //             .iter()
+    //             .enumerate()
+    //             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+    //             .map(|(i, _)| i)
+    //             .unwrap();
 
-            // Value of the rollout to propagate
-            let propagated_value = self.children[child_index].traverse(
-                &mut state_node.children[child_index],
-                agent_index,
-                temperature,
-            );
+    //         // Value of the rollout to propagate
+    //         let propagated_value = self.children[child_index].traverse(
+    //             &mut state_node.children[child_index],
+    //             agent_index,
+    //             temperature,
+    //         );
 
-            // Update n and t
-            self.num_visits += 1;
-            self.total_value += propagated_value;
+    //         // Update n and t
+    //         self.num_visits += 1;
+    //         self.total_value += propagated_value;
 
-            return propagated_value;
-        }
+    //         return propagated_value;
+    //     }
 
-        // Perform a rollout if the node has never been visited before
-        if self.num_visits == 0 {
-            let rollout_outcome = state_node.rollout(agent_index);
+    //     // Perform a rollout if the node has never been visited before
+    //     if self.num_visits == 0 {
+    //         let rollout_outcome = state_node.rollout(agent_index);
 
-            // Update n and t
-            self.num_visits += 1;
-            self.total_value += rollout_outcome;
+    //         // Update n and t
+    //         self.num_visits += 1;
+    //         self.total_value += rollout_outcome;
 
-            return rollout_outcome;
-        }
+    //         return rollout_outcome;
+    //     }
 
-        // Expand the tree and rollout from the first child if
-        // the node is a leaf node that hasn't been visited yet
-        state_node.generate_children();
+    //     // Expand the tree and rollout from the first child if
+    //     // the node is a leaf node that hasn't been visited yet
+    //     state_node.generate_children();
 
-        // Sync the MCTS tree with the game-state tree
-        self.sync_children_count(state_node);
+    //     // Sync the MCTS tree with the game-state tree
+    //     self.sync_children_count(state_node);
 
-        state_node.children[0].rollout(agent_index)
-    }
+    //     state_node.children[0].rollout(agent_index)
+    // }
 }
 
 /// An agent playing the game, or the "brains" of a player.
@@ -193,61 +195,63 @@ impl Agent {
 
     /// Choose a child of `from_node` to move to. Return the index of that child.
     pub fn make_choice(&mut self, from_node: &mut StateDiff, move_history: &Vec<usize>) -> usize {
-        match self {
-            Agent::Ai { .. } => self.ai_choice(from_node, move_history),
-            Agent::Human => self.human_choice(from_node),
-            Agent::Random => self.random_choice(from_node),
-        }
+        // match self {
+        //     Agent::Ai { .. } => self.ai_choice(from_node, move_history),
+        //     Agent::Human => self.human_choice(from_node),
+        //     Agent::Random => self.random_choice(from_node),
+        // }
+
+        0
     }
 
     /*********        PLAYER LOGIC        *********/
 
-    fn ai_choice(&mut self, state_node: &mut StateDiff, move_history: &Vec<usize>) -> usize {
-        let start_time = Instant::now();
+    // fn ai_choice(&mut self, state_node: &mut StateDiff, move_history: &Vec<usize>) -> usize {
+    //     let start_time = Instant::now();
 
-        // Extract relevant fields from agent
-        let (max_time, temperature, agent_index, latest_unseen_move, mcts_node) = match self {
-            Agent::Ai {
-                time_limit,
-                temperature,
-                index,
-                latest_unseen_move,
-                mcts_tree,
-            } => (
-                Duration::from_millis(*time_limit),
-                *temperature,
-                *index,
-                latest_unseen_move,
-                mcts_tree,
-            ),
-            _ => unreachable!(),
-        };
+    //     // Extract relevant fields from agent
+    //     let (max_time, temperature, agent_index, latest_unseen_move, mcts_node) = match self {
+    //         Agent::Ai {
+    //             time_limit,
+    //             temperature,
+    //             index,
+    //             latest_unseen_move,
+    //             mcts_tree,
+    //         } => (
+    //             Duration::from_millis(*time_limit),
+    //             *temperature,
+    //             *index,
+    //             latest_unseen_move,
+    //             mcts_tree,
+    //         ),
+    //         _ => unreachable!(),
+    //     };
 
-        // Update mcts_node to reflect the current game state
-        mcts_node.sync_with_walk(&move_history[*latest_unseen_move..]);
-        // Set the lastest unseen move to the move after this one
-        *latest_unseen_move = move_history.len() + 1;
+    //     // Update mcts_node to reflect the current game state
+    //     mcts_node.sync_with_walk(&move_history[*latest_unseen_move..]);
+    //     // Set the lastest unseen move to the move after this one
+    //     *latest_unseen_move = move_history.len() + 1;
 
-        // Ensure `mcts_node` has all of its direct children
-        state_node.generate_children();
-        mcts_node.sync_children_count(state_node);
+    //     // Ensure `mcts_node` has all of its direct children
+    //     state_node.generate_children();
+    //     mcts_node.sync_children_count(state_node);
 
-        // Continue searching until time is up
-        while start_time.elapsed() < max_time {
-            mcts_node.traverse(state_node, agent_index, temperature);
-        }
+    //     // Continue searching until time is up
+    //     while start_time.elapsed() < max_time {
+    //         mcts_node.traverse(state_node, agent_index, temperature);
+    //     }
 
-        mcts_node.get_best_child_index()
-    }
+    //     mcts_node.get_best_child_index()
+    // }
 
-    fn human_choice(&self, _from_node: &mut StateDiff) -> usize {
-        0
-    }
+    // fn human_choice(&self, _from_node: &mut StateDiff) -> usize {
+    //     0
+    // }
 
-    fn random_choice(&self, state_node: &mut StateDiff) -> usize {
-        let mut rng = rand::thread_rng();
-        state_node.generate_children();
+    // fn random_choice(&self, state_node: &mut StateDiff) -> usize {
+    //     let mut rng = rand::thread_rng();
+    //     state_node.generate_children();
 
-        rng.gen_range(0..state_node.children.len())
-    }
+    //     rng.gen_range(0..state_node.children.len())
+    // }
 }
