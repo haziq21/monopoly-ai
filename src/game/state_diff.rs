@@ -2,9 +2,11 @@ use super::globals::*;
 use super::Game;
 use std::collections::HashMap;
 
+type NodeSet<'a> = &'a Vec<StateDiff>;
+
 /*********        BRANCH TYPE        *********/
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 /// The type of branch that led to a game state.
 enum BranchType {
     /// A game state that was achieved by chance (e.g. by rolling the dice / getting a chance card).
@@ -77,6 +79,13 @@ enum FieldDiff {
 /*********        STATE DIFF        *********/
 
 pub struct StateDiff {
+    /// Changes to the game state since the previous (parent) state.
+    /// `FieldDiff`s in this vec will always appear in the same order (right to left):
+    ///
+    /// 0. `FieldDiff::BranchType`
+    /// 1. `FieldDiff::Players`
+    /// 2. `FieldDiff::CurrentPlayer`
+    /// 3. `FieldDiff::OwnedProperties`
     diffs: Vec<FieldDiff>,
     present_diffs: u8,
     parent: usize,
@@ -96,11 +105,48 @@ impl StateDiff {
         }
     }
 
+    pub fn gen_children(&self, all_nodes: NodeSet) -> Vec<StateDiff> {
+        self.gen_chance_children(all_nodes)
+    }
+
     /// Return child states that can be reached by rolling dice from this state.
-    pub fn chance_children(&self, all_nodes: &mut Game) -> Vec<StateDiff> {
+    fn gen_chance_children(&self, all_nodes: NodeSet) -> Vec<StateDiff> {
+        self.diff_branch_type(all_nodes);
         vec![]
     }
 
     /*********        STATE FIELD GETTERS        *********/
+
+    /// Return the index of the specified diff in `self.diffs`,
+    ///  or `None` if the state doesn't track it.
+    fn get_diff_index(&self, diff_id: u8) -> Option<usize> {
+        let relevant_bits = self.present_diffs >> diff_id;
+
+        if relevant_bits & 1 == 1 {
+            return None;
+        }
+
+        let high_bit_sum = (relevant_bits & 0b00000010)
+            + (relevant_bits & 0b00000100)
+            + (relevant_bits & 0b00001000)
+            + (relevant_bits & 0b00010000)
+            + (relevant_bits & 0b00100000)
+            + (relevant_bits & 0b01000000)
+            + (relevant_bits & 0b10000000);
+
+        Some(high_bit_sum.into())
+    }
+
+    /// Return the branch type of the node.
+    fn diff_branch_type<'g: 'r, 'r>(&'r self, all_nodes: NodeSet<'g>) -> &'r BranchType {
+        match self.get_diff_index(0) {
+            Some(i) => match &self.diffs[i] {
+                FieldDiff::BranchType(a) => a,
+                _ => unreachable!(),
+            },
+            None => all_nodes[self.parent].diff_branch_type(all_nodes),
+        }
+    }
+
     /*********        OTHER GETTERS        *********/
 }

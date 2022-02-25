@@ -38,8 +38,7 @@ impl Game {
 
     /// Play the game until it ends.
     pub fn play(&mut self) {
-        // Placeholder
-        self.current_state().chance_children(self);
+        self.current_state().gen_children(&self.state_nodes);
     }
 
     /*********        GETTERS        *********/
