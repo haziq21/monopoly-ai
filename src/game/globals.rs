@@ -127,10 +127,10 @@ impl std::fmt::Display for Player {
     }
 }
 
-pub const DIFF_INDEX_BRANCH_TYPE: u8 = 0;
-pub const DIFF_INDEX_PLAYERS: u8 = 0;
-pub const DIFF_INDEX_CURRENT_PLAYER: u8 = 0;
-pub const DIFF_INDEX_OWNED_PROPERTIES: u8 = 0;
+pub const DIFF_ID_BRANCH_TYPE: u8 = 7;
+pub const DIFF_ID_PLAYERS: u8 = 6;
+pub const DIFF_ID_CURRENT_PLAYER: u8 = 5;
+pub const DIFF_ID_OWNED_PROPERTIES: u8 = 4;
 
 lazy_static! {
     /// Positions of the chance card tiles on the game board.

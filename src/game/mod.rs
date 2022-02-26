@@ -62,7 +62,7 @@ impl Game {
         // Alias for the state in question
         let s = &self.state_nodes[state_handle];
 
-        match s.get_diff_index(DIFF_INDEX_PLAYERS) {
+        match s.get_diff_index(DIFF_ID_PLAYERS) {
             Some(i) => match &s.diffs[i] {
                 FieldDiff::Players(p) => p,
                 _ => unreachable!(),
@@ -77,7 +77,7 @@ impl Game {
         // Alias for the state in question
         let s = &self.state_nodes[state_handle];
 
-        match s.get_diff_index(DIFF_INDEX_CURRENT_PLAYER) {
+        match s.get_diff_index(DIFF_ID_CURRENT_PLAYER) {
             Some(i) => match s.diffs[i] {
                 FieldDiff::CurrentPlayer(p) => p,
                 _ => unreachable!(),
