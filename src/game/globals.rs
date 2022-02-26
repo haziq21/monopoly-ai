@@ -127,9 +127,10 @@ impl std::fmt::Display for Player {
     }
 }
 
-/// The number of players playing the game. This should
-/// be between 2 and 4 inclusive, according to the rules.
-pub const NUM_PLAYERS: usize = 2;
+pub const DIFF_INDEX_BRANCH_TYPE: u8 = 0;
+pub const DIFF_INDEX_PLAYERS: u8 = 0;
+pub const DIFF_INDEX_CURRENT_PLAYER: u8 = 0;
+pub const DIFF_INDEX_OWNED_PROPERTIES: u8 = 0;
 
 lazy_static! {
     /// Positions of the chance card tiles on the game board.
