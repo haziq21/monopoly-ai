@@ -39,7 +39,7 @@ impl Game {
 
     /// Play the game until it ends.
     pub fn play(&mut self) {
-        self.gen_children(self.current_state());
+        self.gen_children(self.current_handle);
     }
 
     /*********        GETTERS        *********/
@@ -51,16 +51,17 @@ impl Game {
 
     /*********        STATE PROPERTY GETTERS        *********/
 
-    fn get_current_player(&self, state_handle: usize) -> &Player {
-        &self.diff_players(state_handle)[self.diff_current_player(state_handle)]
+    /// Return the player whose turn it currently is at the specified state.
+    fn current_player(&self, handle: usize) -> &Player {
+        &self.diff_players(handle)[self.diff_current_player(handle)]
     }
 
     /*********        STATE DIFF GETTERS        *********/
 
-    /// Return a vector of players playing the game from `state`.
-    fn diff_players(&self, state_handle: usize) -> &Vec<Player> {
+    /// Return a vector of players playing the game at the specified state.
+    fn diff_players(&self, handle: usize) -> &Vec<Player> {
         // Alias for the state in question
-        let s = &self.state_nodes[state_handle];
+        let s = &self.state_nodes[handle];
 
         match s.get_diff_index(DIFF_ID_PLAYERS) {
             Some(i) => match &s.diffs[i] {
@@ -72,10 +73,10 @@ impl Game {
         }
     }
 
-    /// Return the index of the player whose turn it currently is.
-    fn diff_current_player(&self, state_handle: usize) -> usize {
+    /// Return the index of the player whose turn it currently is at the specified state.
+    fn diff_current_player(&self, handle: usize) -> usize {
         // Alias for the state in question
-        let s = &self.state_nodes[state_handle];
+        let s = &self.state_nodes[handle];
 
         match s.get_diff_index(DIFF_ID_CURRENT_PLAYER) {
             Some(i) => match s.diffs[i] {
@@ -89,14 +90,18 @@ impl Game {
 
     /*********        STATE GENERATION        *********/
 
-    /// Return child states that can be reached from the origin state.
-    fn gen_children(&self, origin: &StateDiff) -> Vec<StateDiff> {
-        self.gen_chance_children(origin)
+    /// Return child states that can be reached from the specified state.
+    fn gen_children(&self, handle: usize) -> Vec<StateDiff> {
+        self.gen_chance_children(handle)
     }
 
-    /// Return child states that can be reached by rolling dice from this state.
-    fn gen_chance_children(&self, origin: &StateDiff) -> Vec<StateDiff> {
-        // self.diff_branch_type(origin);
-        vec![]
+    /// Return child states that can be reached by rolling dice from the specified state.
+    fn gen_chance_children(&self, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+
+        // Get the player out of jail if they're in jail
+        if self.current_player(handle).in_jail {}
+
+        children
     }
 }
