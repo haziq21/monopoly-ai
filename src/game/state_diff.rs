@@ -77,14 +77,14 @@ pub enum FieldDiff {
 /*********        STATE DIFF        *********/
 
 pub struct StateDiff {
+    present_diffs: u8,
     /// Changes to the game state since the previous (parent) state.
-    /// `FieldDiff`s in this vec will always appear in the same order (right to left):
+    /// `FieldDiff`s in this vec will always appear in the same order:
     ///
     /// 0. `FieldDiff::BranchType`
     /// 1. `FieldDiff::Players`
     /// 2. `FieldDiff::CurrentPlayer`
     /// 3. `FieldDiff::OwnedProperties`
-    present_diffs: u8,
     pub diffs: Vec<FieldDiff>,
     pub parent: usize,
     pub children: Vec<usize>,
