@@ -26,7 +26,7 @@ pub enum Color {
     Blue,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 /// Chance cards that require the player to make a choice.
 ///
 /// Note that any chance card that affects a property requires the
@@ -72,6 +72,37 @@ pub enum ChanceCard {
     AllToParking,
 }
 
+impl ChanceCard {
+    pub fn unseen_probabilities(seen_cards: &Vec<ChanceCard>) -> HashMap<ChanceCard, f64> {
+        let counts = HashMap::from([
+            (ChanceCard::RentTo1, 3.),
+            (ChanceCard::RentTo5, 1.),
+            (ChanceCard::SetRentInc, 3.),
+            (ChanceCard::SetRentDec, 1.),
+            (ChanceCard::SideRentInc, 1.),
+            (ChanceCard::SideRentDec, 1.),
+            (ChanceCard::RentSpike, 2.),
+            (ChanceCard::Bonus, 2.),
+            (ChanceCard::SwapProperty, 2.),
+            (ChanceCard::OpponentToJail, 1.),
+            (ChanceCard::GoToAnyProperty, 1.),
+            (ChanceCard::PropertyTax, 1.),
+            (ChanceCard::Level1Rent, 1.),
+            (ChanceCard::AllToParking, 1.),
+        ]);
+
+        for card in seen_cards {
+            *counts.get_mut(card).unwrap() -= 1.;
+        }
+
+        for (card, chance) in &mut counts {
+            *chance = *chance / (21 - seen_cards.len()) as f64
+        }
+
+        counts
+    }
+}
+
 /// A property tile on the board.
 pub struct Property {
     /// The color set that the property belongs to.
@@ -104,7 +135,7 @@ pub struct Player {
     /// and 'Mayfair' (the last tile going clockwise) is at 35.
     pub position: u8,
     /// The amount of money the player has.
-    pub balance: u16,
+    pub balance: i32,
     /// The number of consecutive doubles the player has rolled.
     pub doubles_rolled: u8,
 }
@@ -166,7 +197,10 @@ pub const DIFF_ID_PLAYERS: u8 = 6;
 pub const DIFF_ID_CURRENT_PLAYER: u8 = 5;
 pub const DIFF_ID_OWNED_PROPERTIES: u8 = 4;
 pub const DIFF_ID_SEEN_CCS: u8 = 3;
+pub const DIFF_ID_SEEN_CCS_HEAD: u8 = 2;
+pub const DIFF_ID_LEVEL_1_RENT: u8 = 1;
 
+pub const JAIL_POSITION: u8 = 9;
 pub const GO_TO_JAIL_POSITION: u8 = 27;
 
 lazy_static! {
