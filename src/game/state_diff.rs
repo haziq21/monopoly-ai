@@ -60,6 +60,7 @@ impl PropertyOwnership {
 
 /*********        MOVE TYPE        *********/
 
+#[derive(Debug)]
 pub enum MoveType {
     Undefined,
     Roll,
@@ -85,6 +86,7 @@ impl MoveType {
 /*********        FIELD DIFF        *********/
 
 /// A field or property of a game state. There are 8 different fields (8 variants of this enum).
+#[derive(Debug)]
 pub enum FieldDiff {
     /// The type of branch that led to a game state.
     BranchType(BranchType),
@@ -99,6 +101,7 @@ pub enum FieldDiff {
 
 /*********        STATE DIFF        *********/
 
+#[derive(Debug)]
 pub struct StateDiff {
     pub present_diffs: u8,
     /// Changes to the game state since the previous (parent) state.
@@ -142,7 +145,7 @@ impl StateDiff {
             present_diffs: 0b11110000,
             parent: 0,
             children: vec![],
-            next_move: MoveType::Undefined,
+            next_move: MoveType::Roll,
         }
     }
 
@@ -150,20 +153,20 @@ impl StateDiff {
 
     /// Return whether the specified diff field is being tracked.
     pub fn diff_exists(&self, diff_id: u8) -> bool {
-        (self.present_diffs >> diff_id) & 1 != 0
+        (self.present_diffs >> diff_id) & 1 == 1
     }
 
     /// Return the index of the specified diff in `self.diffs` if it were to exist.
     pub fn get_supposed_diff_index(&self, diff_id: u8) -> usize {
         let relevant_bits = self.present_diffs >> diff_id;
 
-        let high_bit_sum = (relevant_bits & 0b00000010)
-            + (relevant_bits & 0b00000100)
-            + (relevant_bits & 0b00001000)
-            + (relevant_bits & 0b00010000)
-            + (relevant_bits & 0b00100000)
-            + (relevant_bits & 0b01000000)
-            + (relevant_bits & 0b10000000);
+        let high_bit_sum = (relevant_bits >> 1 & 1)
+            + (relevant_bits >> 2 & 1)
+            + (relevant_bits >> 3 & 1)
+            + (relevant_bits >> 4 & 1)
+            + (relevant_bits >> 5 & 1)
+            + (relevant_bits >> 6 & 1)
+            + (relevant_bits >> 7 & 1);
 
         high_bit_sum.into()
     }
@@ -171,7 +174,7 @@ impl StateDiff {
     /// Return the index of the specified diff in `self.diffs`,
     ///  or `None` if the state doesn't track it.
     pub fn get_diff_index(&self, diff_id: u8) -> Option<usize> {
-        if self.diff_exists(diff_id) {
+        if !self.diff_exists(diff_id) {
             return None;
         }
 
