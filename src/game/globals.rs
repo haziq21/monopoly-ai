@@ -113,6 +113,34 @@ impl Player {
             doubles_rolled: 0,
         }
     }
+
+    /// Move the player on the board.
+    pub fn move_by(&mut self, distance: u8) {
+        let new_pos = (self.position + distance) % 36;
+
+        // Set the player's `in_jail` flag to false if appropriate
+        if self.in_jail && distance != 0 {
+            self.in_jail = false;
+        }
+
+        // Give the player $200 if they pass 'Go'
+        if new_pos < self.position {
+            self.balance += 200;
+        }
+
+        // Update the position
+        self.position = new_pos;
+    }
+
+    /// Send the player to jail.
+    pub fn send_to_jail(&mut self) {
+        // Set the player's position to jail
+        self.position = 9;
+        self.in_jail = true;
+
+        // Reset the doubles counter
+        self.doubles_rolled = 0;
+    }
 }
 
 impl std::fmt::Display for Player {
