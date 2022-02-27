@@ -17,7 +17,7 @@ pub struct Game {
     state_nodes: Vec<StateDiff>,
     /// Indexes of states that have been marked for deletion.
     /// These states can be safely replaced by newer states.
-    dirty_states: Vec<usize>,
+    dirty_handles: Vec<usize>,
     /// The index of the state the game is currently at.
     current_handle: usize,
 }
@@ -32,20 +32,34 @@ impl Game {
             agents,
             move_history: vec![],
             state_nodes: vec![StateDiff::new_root(player_count)],
-            dirty_states: vec![],
+            dirty_handles: vec![],
             current_handle: 0,
         }
     }
 
     /// Play the game until it ends.
     pub fn play(&mut self) {
-        self.gen_children(self.current_handle);
+        for state in self.gen_children(self.current_handle) {
+            let handle = self.append_state(state);
+            self.gen_children(handle);
+        }
     }
 
     /*********        HELPERS        *********/
 
     /// Push the new state node to `self.state_nodes` and return its handle.
-    // fn append_state(&mut self, )
+    fn append_state(&mut self, state: StateDiff) -> usize {
+        if self.dirty_handles.len() == 0 {
+            self.state_nodes.push(state);
+            return self.state_nodes.len() - 1;
+        }
+
+        let i = self.dirty_handles[0];
+        self.state_nodes[i] = state;
+        self.dirty_handles.swap_remove(0);
+
+        i
+    }
 
     /*********        STATE PROPERTY GETTERS        *********/
 
@@ -86,12 +100,28 @@ impl Game {
         }
     }
 
+    /// Return a vector of chance cards that have already been seen from the specified state.
+    fn diff_seen_ccs(&self, handle: usize) -> &Vec<ChanceCard> {
+        // Alias for the state in question
+        let s = &self.state_nodes[handle];
+
+        match s.get_diff_index(DIFF_ID_SEEN_CCS) {
+            Some(i) => match &s.diffs[i] {
+                FieldDiff::SeenCCs(p) => p,
+                _ => unreachable!(),
+            },
+            // Look for `players` in the parent state if this state doesn't contain it
+            None => self.diff_seen_ccs(s.parent),
+        }
+    }
+
     /*********        STATE GENERATION        *********/
 
     /// Return child states that can be reached from the specified state.
     fn gen_children(&self, handle: usize) -> Vec<StateDiff> {
         match self.state_nodes[handle].next_move {
             MoveType::Roll => self.gen_roll_children(handle),
+            MoveType::ChanceCard => self.gen_cc_children(handle),
             MoveType::Undefined => unreachable!(),
             _ => unimplemented!(),
         }
@@ -141,7 +171,6 @@ impl Game {
                 let players = diff.set_players_diff(self.diff_players(handle).clone());
                 // Alias for the player whose turn it currently is
                 let curr_player = &mut players[current_player_index];
-
                 // Update the current player's position
                 curr_player.move_by(roll.sum);
 
@@ -168,6 +197,16 @@ impl Game {
                 children.push(diff);
             }
         }
+
+        children
+    }
+
+    /// Return child states that can be reached by picking a chance card from the specified state.
+    fn gen_cc_children(&self, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+        let seen_ccs = self.diff_seen_ccs(handle);
+
+        if seen_ccs.len() == 21 {}
 
         children
     }

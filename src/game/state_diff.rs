@@ -97,6 +97,8 @@ pub enum FieldDiff {
     /// A hashmap of properties owned by the players, with the
     /// keys being the position of a property around the board.
     OwnedProperties(HashMap<u8, PropertyOwnership>),
+    /// The chance cards that have been used, ordered from least recent to most recent.
+    SeenCCs(Vec<ChanceCard>),
 }
 
 /*********        STATE DIFF        *********/
@@ -141,8 +143,9 @@ impl StateDiff {
                 FieldDiff::Players(vec![Player::new(); player_count]),
                 FieldDiff::CurrentPlayer(0),
                 FieldDiff::OwnedProperties(HashMap::new()),
+                FieldDiff::SeenCCs(vec![]),
             ],
-            present_diffs: 0b11110000,
+            present_diffs: 0b11111000,
             parent: 0,
             children: vec![],
             next_move: MoveType::Roll,
@@ -207,12 +210,17 @@ impl StateDiff {
         self.set_diff(DIFF_ID_BRANCH_TYPE, FieldDiff::BranchType(branch_type));
     }
 
-    /// Clone a `players` reference, and set it as the
-    /// state's own diff. Return a mutable reference to the modified diff.
+    /// Set a `players` vector as the state's own diff.
+    /// Return a mutable reference to the modified diff.
     pub fn set_players_diff(&mut self, players: Vec<Player>) -> &mut Vec<Player> {
         match self.set_diff(DIFF_ID_PLAYERS, FieldDiff::Players(players)) {
             FieldDiff::Players(p) => p,
             _ => unreachable!(),
         }
+    }
+
+    /// Set a `seen_ccs` vector as the state's own diff.
+    pub fn set_seen_ccs_diff(&mut self, seen_ccs: Vec<ChanceCard>) {
+        self.set_diff(DIFF_ID_SEEN_CCS, FieldDiff::SeenCCs(seen_ccs));
     }
 }

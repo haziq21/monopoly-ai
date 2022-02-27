@@ -159,6 +159,7 @@ pub const DIFF_ID_BRANCH_TYPE: u8 = 7;
 pub const DIFF_ID_PLAYERS: u8 = 6;
 pub const DIFF_ID_CURRENT_PLAYER: u8 = 5;
 pub const DIFF_ID_OWNED_PROPERTIES: u8 = 4;
+pub const DIFF_ID_SEEN_CCS: u8 = 3;
 
 pub const GO_TO_JAIL_POSITION: u8 = 27;
 
