@@ -34,36 +34,42 @@ pub enum Color {
 /// received but no one owns a property yet, do nothing.
 pub enum ChanceCard {
     /// Set any property's rent level to 1.
-    RentLvlTo1,
+    RentTo1,
     /// Set one of your properties' rent level to 5.
-    RentLvlTo5,
+    RentTo5,
     /// Choose any color set of which you own a property in, and raise
     /// the rent level of all the properties in that color set by 1.
-    RentLvlIncForSet,
+    SetRentInc,
     /// Choose any color set of which you own a property in, and lower
     /// the rent level of all the properties in that color set by 1.
-    RentLvlDecForSet,
+    SetRentDec,
     /// Choose a side of the board of which you own a property on, and
     /// raise the rent level of all the properties on that side by 1.
-    RentLvlIncForBoardSide,
+    SideRentInc,
     /// Choose a side of the board of which you own a property on, and
     /// lower the rent level of all the properties on that side by 1.
-    RentLvlDecForBoardSide,
+    SideRentDec,
     /// Raise the rent level of any property you own by 1, and lower the
     /// rent levels of that property's neighbors by 1. Note that "neighbours"
     /// refers to the closest property towards the left and right of the
     /// chosen property, regardless of ownership or distance away.
-    RentLvlDecForNeighbours,
+    RentSpike,
     /// You and any opponent you choose recieve $200 from the bank.
-    BonusForYouAndOpponent,
+    Bonus,
     /// Exchange the ownership of one of your properties
     /// with one of your opponents' properties.
     SwapProperty,
     /// Choose any opponent to send to jail.
-    SendOpponentToJail,
+    OpponentToJail,
     /// Move to any property tile around the board and
     /// buy, auction, or raise its rent level by 1.
-    MoveToAnyProperty,
+    GoToAnyProperty,
+    /// Pay $50 to the bank for every property you own.
+    PropertyTax,
+    /// All players pay level 1 rent for two rounds.
+    Level1Rent,
+    /// Move all players who are not in jail to free parking.
+    AllToParking,
 }
 
 /// A property tile on the board.

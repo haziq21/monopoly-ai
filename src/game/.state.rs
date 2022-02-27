@@ -315,7 +315,7 @@ impl StateDiff {
         let mut children = vec![];
 
         for (pos, prop) in &self.owned_properties {
-            // "RentLvlTo5" only applies to your properties (not opponents)
+            // "RentTo5" only applies to your properties (not opponents)
             if n == 5 && prop.owner != self.current_player_index {
                 continue;
             }
@@ -641,17 +641,17 @@ impl StateDiff {
     /// reached by making a decision from a chance card tile.
     fn cc_choice_effects(&self) -> Vec<Box<StateDiff>> {
         let mut children = match self.active_cc.unwrap() {
-            ChanceCard::RentLvlTo1 => self.cc_rent_level_to(1),
-            ChanceCard::RentLvlTo5 => self.cc_rent_level_to(5),
-            ChanceCard::RentLvlIncForSet => self.cc_rent_change_for_set(true),
-            ChanceCard::RentLvlDecForSet => self.cc_rent_change_for_set(false),
-            ChanceCard::RentLvlIncForBoardSide => self.cc_rent_change_for_side(true),
-            ChanceCard::RentLvlDecForBoardSide => self.cc_rent_change_for_side(false),
-            ChanceCard::RentLvlDecForNeighbours => self.cc_rent_dec_for_neighbours(),
-            ChanceCard::BonusForYouAndOpponent => self.cc_bonus(),
+            ChanceCard::RentTo1 => self.cc_rent_level_to(1),
+            ChanceCard::RentTo5 => self.cc_rent_level_to(5),
+            ChanceCard::SetRentInc => self.cc_rent_change_for_set(true),
+            ChanceCard::SetRentDec => self.cc_rent_change_for_set(false),
+            ChanceCard::SideRentInc => self.cc_rent_change_for_side(true),
+            ChanceCard::SideRentDec => self.cc_rent_change_for_side(false),
+            ChanceCard::RentSpike => self.cc_rent_dec_for_neighbours(),
+            ChanceCard::Bonus => self.cc_bonus(),
             ChanceCard::SwapProperty => self.cc_swap_property(),
-            ChanceCard::SendOpponentToJail => self.cc_opponent_to_jail(),
-            ChanceCard::MoveToAnyProperty => self.cc_move_to_any_property(),
+            ChanceCard::OpponentToJail => self.cc_opponent_to_jail(),
+            ChanceCard::GoToAnyProperty => self.cc_move_to_any_property(),
         };
 
         // Reset the active chance card
@@ -725,14 +725,14 @@ impl StateDiff {
 
         // Chance cards that require the player to make a choice
         let choiceful_ccs = [
-            (3, ChanceCard::RentLvlTo1),
-            (1, ChanceCard::RentLvlTo5),
-            (3, ChanceCard::RentLvlIncForSet),
-            (1, ChanceCard::RentLvlDecForSet),
-            (1, ChanceCard::RentLvlIncForBoardSide),
-            (1, ChanceCard::RentLvlDecForBoardSide),
-            (2, ChanceCard::RentLvlDecForNeighbours),
-            (2, ChanceCard::BonusForYouAndOpponent),
+            (3, ChanceCard::RentTo1),
+            (1, ChanceCard::RentTo5),
+            (3, ChanceCard::SetRentInc),
+            (1, ChanceCard::SetRentDec),
+            (1, ChanceCard::SideRentInc),
+            (1, ChanceCard::SideRentDec),
+            (2, ChanceCard::RentSpike),
+            (2, ChanceCard::Bonus),
         ];
 
         // Push the child states for all the choiceful chance cards
