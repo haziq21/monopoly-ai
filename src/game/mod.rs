@@ -5,7 +5,7 @@ mod agent;
 pub use agent::Agent;
 
 mod state_diff;
-use state_diff::{FieldDiff, StateDiff};
+use state_diff::{BranchType, FieldDiff, StateDiff};
 
 /// A simulation of Monopoly.
 pub struct Game {
@@ -42,12 +42,10 @@ impl Game {
         self.gen_children(self.current_handle);
     }
 
-    /*********        GETTERS        *********/
+    /*********        HELPERS        *********/
 
-    /// Return an immutable reference to the current game state.
-    fn current_state(&self) -> &StateDiff {
-        &self.state_nodes[self.current_handle]
-    }
+    /// Push the new state node to `self.state_nodes` and return its handle.
+    // fn append_state(&mut self, )
 
     /*********        STATE PROPERTY GETTERS        *********/
 
@@ -97,10 +95,71 @@ impl Game {
 
     /// Return child states that can be reached by rolling dice from the specified state.
     fn gen_chance_children(&self, handle: usize) -> Vec<StateDiff> {
+        let current_player_index = self.diff_current_player(handle);
         let mut children = vec![];
 
         // Get the player out of jail if they're in jail
-        if self.current_player(handle).in_jail {}
+        if self.current_player(handle).in_jail {
+            // Try rolling doubles to get out of jail
+            let double_probabilities = roll_for_doubles(3);
+
+            // Loop through all possible dice results
+            for roll in double_probabilities {
+                // Create a new diff
+                let mut diff = StateDiff::new_with_parent(handle);
+                // Update the branch type
+                diff.set_branch_type_diff(BranchType::Chance(roll.probability));
+                // Clone the players
+                let players = diff.set_players_diff(self.diff_players(handle).clone());
+
+                // We didn't manage to roll doubles
+                if !roll.is_double {
+                    // $100 penalty for not rolling doubles
+                    players[current_player_index].balance -= 100;
+                }
+
+                // Update the current player's position
+                players[current_player_index].move_by(roll.sum);
+                children.push(diff);
+            }
+        }
+        // Otherwise, play as normal
+        else {
+            // Loop through all possible dice results
+            for roll in SIGNIFICANT_ROLLS.iter() {
+                // Create a new diff
+                let mut diff = StateDiff::new_with_parent(handle);
+                // Update the branch type
+                diff.set_branch_type_diff(BranchType::Chance(roll.probability));
+                // Clone the players
+                let players = diff.set_players_diff(self.diff_players(handle).clone());
+                // Alias for the player whose turn it currently is
+                let curr_player = &mut players[current_player_index];
+
+                // Update the current player's position
+                curr_player.move_by(roll.sum);
+
+                // Check if the player landed on 'go to jail'
+                if curr_player.position == 27 {
+                    curr_player.send_to_jail();
+                }
+                // Check if this roll got doubles
+                else if roll.is_double {
+                    // Increment the doubles_rolled counter
+                    curr_player.doubles_rolled += 1;
+
+                    // Go to jail after three consecutive doubles
+                    if curr_player.doubles_rolled == 3 {
+                        curr_player.send_to_jail();
+                    }
+                } else {
+                    // Reset the doubles counter
+                    curr_player.doubles_rolled = 0;
+                }
+
+                children.push(diff);
+            }
+        }
 
         children
     }
