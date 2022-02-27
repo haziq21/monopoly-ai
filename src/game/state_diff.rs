@@ -58,6 +58,30 @@ impl PropertyOwnership {
     }
 }
 
+/*********        MOVE TYPE        *********/
+
+pub enum MoveType {
+    Undefined,
+    Roll,
+    ChanceCard,
+    Location,
+    Property,
+}
+
+impl MoveType {
+    pub fn when_landed_on(tile: u8) -> MoveType {
+        if PROP_POSITIONS.contains(&tile) {
+            MoveType::Property
+        } else if CC_POSITIONS.contains(&tile) {
+            MoveType::ChanceCard
+        } else if LOC_POSITIONS.contains(&tile) {
+            MoveType::Location
+        } else {
+            MoveType::Roll
+        }
+    }
+}
+
 /*********        FIELD DIFF        *********/
 
 /// A field or property of a game state. There are 8 different fields (8 variants of this enum).
@@ -87,6 +111,9 @@ pub struct StateDiff {
     pub diffs: Vec<FieldDiff>,
     pub parent: usize,
     pub children: Vec<usize>,
+    /// The type of move to be made after a state.
+    /// This is not in `diffs` as it changes every move.
+    pub next_move: MoveType,
 }
 
 impl StateDiff {
@@ -99,6 +126,7 @@ impl StateDiff {
             present_diffs: 0,
             parent,
             children: vec![],
+            next_move: MoveType::Undefined,
         }
     }
 
@@ -114,6 +142,7 @@ impl StateDiff {
             present_diffs: 0b11110000,
             parent: 0,
             children: vec![],
+            next_move: MoveType::Undefined,
         }
     }
 
@@ -179,24 +208,6 @@ impl StateDiff {
     /// state's own diff. Return a mutable reference to the modified diff.
     pub fn set_players_diff(&mut self, players: Vec<Player>) -> &mut Vec<Player> {
         match self.set_diff(DIFF_ID_PLAYERS, FieldDiff::Players(players)) {
-            FieldDiff::Players(p) => p,
-            _ => unreachable!(),
-        }
-    }
-
-    /*********        OWNED DIFF HELPERS        *********/
-
-    /// Return a mutable reference to the players diff.
-    /// Panic if the state doesn't own the players diff.
-    pub fn get_players_diff(&mut self) -> &mut Vec<Player> {
-        let diff_index = match self.get_diff_index(DIFF_ID_PLAYERS) {
-            Some(i) => i,
-            None => {
-                panic!("StateDiff.get_players_diff() called when the state doesn't own `players`")
-            }
-        };
-
-        match &mut self.diffs[diff_index] {
             FieldDiff::Players(p) => p,
             _ => unreachable!(),
         }

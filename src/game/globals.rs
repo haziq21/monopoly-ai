@@ -160,6 +160,8 @@ pub const DIFF_ID_PLAYERS: u8 = 6;
 pub const DIFF_ID_CURRENT_PLAYER: u8 = 5;
 pub const DIFF_ID_OWNED_PROPERTIES: u8 = 4;
 
+pub const GO_TO_JAIL_POSITION: u8 = 27;
+
 lazy_static! {
     /// Positions of the chance card tiles on the game board.
     pub static ref CC_POSITIONS: HashSet<u8> = HashSet::from([2, 4, 11, 20, 29, 32]);

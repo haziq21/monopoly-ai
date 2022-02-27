@@ -5,7 +5,7 @@ mod agent;
 pub use agent::Agent;
 
 mod state_diff;
-use state_diff::{BranchType, FieldDiff, StateDiff};
+use state_diff::{BranchType, FieldDiff, MoveType, StateDiff};
 
 /// A simulation of Monopoly.
 pub struct Game {
@@ -90,11 +90,15 @@ impl Game {
 
     /// Return child states that can be reached from the specified state.
     fn gen_children(&self, handle: usize) -> Vec<StateDiff> {
-        self.gen_chance_children(handle)
+        match self.state_nodes[handle].next_move {
+            MoveType::Roll => self.gen_roll_children(handle),
+            MoveType::Undefined => unreachable!(),
+            _ => unimplemented!(),
+        }
     }
 
     /// Return child states that can be reached by rolling dice from the specified state.
-    fn gen_chance_children(&self, handle: usize) -> Vec<StateDiff> {
+    fn gen_roll_children(&self, handle: usize) -> Vec<StateDiff> {
         let current_player_index = self.diff_current_player(handle);
         let mut children = vec![];
 
@@ -120,6 +124,8 @@ impl Game {
 
                 // Update the current player's position
                 players[current_player_index].move_by(roll.sum);
+                // Set the next move
+                diff.next_move = MoveType::when_landed_on(players[current_player_index].position);
                 children.push(diff);
             }
         }
@@ -140,7 +146,7 @@ impl Game {
                 curr_player.move_by(roll.sum);
 
                 // Check if the player landed on 'go to jail'
-                if curr_player.position == 27 {
+                if curr_player.position == GO_TO_JAIL_POSITION {
                     curr_player.send_to_jail();
                 }
                 // Check if this roll got doubles
@@ -157,6 +163,8 @@ impl Game {
                     curr_player.doubles_rolled = 0;
                 }
 
+                // Set the next move
+                diff.next_move = MoveType::when_landed_on(curr_player.position);
                 children.push(diff);
             }
         }
