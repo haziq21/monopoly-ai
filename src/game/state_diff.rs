@@ -64,9 +64,10 @@ impl PropertyOwnership {
 pub enum MoveType {
     Undefined,
     Roll,
-    ChanceCard,
-    Location,
     Property,
+    Location,
+    ChanceCard,
+    ChoicefulCC(ChanceCard),
 }
 
 impl MoveType {
@@ -99,6 +100,11 @@ pub enum FieldDiff {
     OwnedProperties(HashMap<u8, PropertyOwnership>),
     /// The chance cards that have been used, ordered from least recent to most recent.
     SeenCCs(Vec<ChanceCard>),
+    /// The starting index of `SeenCCs`.
+    SeenCCsHead(usize),
+    /// The number of rounds to go before the effect of the chance card
+    /// "all players pay level 1 rent for the next two rounds" wears off.
+    Level1Rent(u8),
 }
 
 /*********        STATE DIFF        *********/
@@ -113,6 +119,8 @@ pub struct StateDiff {
     /// 1. `FieldDiff::Players`
     /// 2. `FieldDiff::CurrentPlayer`
     /// 3. `FieldDiff::OwnedProperties`
+    /// 4. `FieldDiff::SeenCCs`
+    /// 5. `FieldDiff::SeenCCsHead`
     pub diffs: Vec<FieldDiff>,
     pub parent: usize,
     pub children: Vec<usize>,
@@ -144,8 +152,10 @@ impl StateDiff {
                 FieldDiff::CurrentPlayer(0),
                 FieldDiff::OwnedProperties(HashMap::new()),
                 FieldDiff::SeenCCs(vec![]),
+                FieldDiff::SeenCCsHead(0),
+                FieldDiff::Level1Rent(0),
             ],
-            present_diffs: 0b11111000,
+            present_diffs: 0b11111110,
             parent: 0,
             children: vec![],
             next_move: MoveType::Roll,
@@ -184,8 +194,6 @@ impl StateDiff {
         Some(self.get_supposed_diff_index(diff_id))
     }
 
-    /*********        DIFF SETTERS        *********/
-
     /// Insert the specified diff, or update it if it  
     /// already exists. Return a mutable reference to the diff.
     fn set_diff(&mut self, diff_id: u8, diff: FieldDiff) -> &mut FieldDiff {
@@ -205,6 +213,8 @@ impl StateDiff {
         &mut self.diffs[diff_index]
     }
 
+    /*********        DIFF SETTERS        *********/
+
     /// Set a `BranchType` as the state's own diff.
     pub fn set_branch_type_diff(&mut self, branch_type: BranchType) {
         self.set_diff(DIFF_ID_BRANCH_TYPE, FieldDiff::BranchType(branch_type));
@@ -222,5 +232,9 @@ impl StateDiff {
     /// Set a `seen_ccs` vector as the state's own diff.
     pub fn set_seen_ccs_diff(&mut self, seen_ccs: Vec<ChanceCard>) {
         self.set_diff(DIFF_ID_SEEN_CCS, FieldDiff::SeenCCs(seen_ccs));
+    }
+
+    pub fn set_level_1_rent_diff(&mut self, rent: u8) {
+        self.set_diff(DIFF_ID_LEVEL_1_RENT, FieldDiff::Level1Rent(rent));
     }
 }
