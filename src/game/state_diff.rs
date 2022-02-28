@@ -200,7 +200,7 @@ impl StateDiff {
         // Get the new index of the diff field
         let diff_index = self.get_supposed_diff_index(diff_id);
 
-        if self.diff_exists(DIFF_ID_PLAYERS) {
+        if self.diff_exists(diff_id) {
             // Set the diff
             self.diffs[diff_index] = diff;
         } else {
