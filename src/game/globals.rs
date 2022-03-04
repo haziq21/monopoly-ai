@@ -73,33 +73,36 @@ pub enum ChanceCard {
 }
 
 impl ChanceCard {
-    pub fn unseen_probabilities(seen_cards: &Vec<ChanceCard>) -> HashMap<ChanceCard, f64> {
-        let counts = HashMap::from([
-            (ChanceCard::RentTo1, 3.),
-            (ChanceCard::RentTo5, 1.),
-            (ChanceCard::SetRentInc, 3.),
-            (ChanceCard::SetRentDec, 1.),
-            (ChanceCard::SideRentInc, 1.),
-            (ChanceCard::SideRentDec, 1.),
-            (ChanceCard::RentSpike, 2.),
-            (ChanceCard::Bonus, 2.),
-            (ChanceCard::SwapProperty, 2.),
-            (ChanceCard::OpponentToJail, 1.),
-            (ChanceCard::GoToAnyProperty, 1.),
-            (ChanceCard::PropertyTax, 1.),
-            (ChanceCard::Level1Rent, 1.),
-            (ChanceCard::AllToParking, 1.),
+    pub fn unseen_counts(seen_cards: &Vec<ChanceCard>) -> HashMap<ChanceCard, u8> {
+        let mut counts = HashMap::from([
+            (ChanceCard::RentTo1, 3),
+            (ChanceCard::RentTo5, 1),
+            (ChanceCard::SetRentInc, 3),
+            (ChanceCard::SetRentDec, 1),
+            (ChanceCard::SideRentInc, 1),
+            (ChanceCard::SideRentDec, 1),
+            (ChanceCard::RentSpike, 2),
+            (ChanceCard::Bonus, 2),
+            (ChanceCard::SwapProperty, 2),
+            (ChanceCard::OpponentToJail, 1),
+            (ChanceCard::GoToAnyProperty, 1),
+            (ChanceCard::PropertyTax, 1),
+            (ChanceCard::Level1Rent, 1),
+            (ChanceCard::AllToParking, 1),
         ]);
 
         for card in seen_cards {
-            *counts.get_mut(card).unwrap() -= 1.;
-        }
-
-        for (card, chance) in &mut counts {
-            *chance = *chance / (21 - seen_cards.len()) as f64
+            *counts.get_mut(card).unwrap() -= 1;
         }
 
         counts
+    }
+
+    pub fn is_choiceless(&self) -> bool {
+        match self {
+            ChanceCard::PropertyTax | ChanceCard::Level1Rent | ChanceCard::AllToParking => true,
+            _ => false,
+        }
     }
 }
 
