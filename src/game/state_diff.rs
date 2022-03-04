@@ -60,7 +60,7 @@ impl PropertyOwnership {
 
 /*********        MOVE TYPE        *********/
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MoveType {
     Undefined,
     Roll,
@@ -87,7 +87,7 @@ impl MoveType {
 /*********        FIELD DIFF        *********/
 
 /// A field or property of a game state. There are 8 different fields (8 variants of this enum).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FieldDiff {
     /// The type of branch that led to a game state.
     BranchType(BranchType),
@@ -109,7 +109,7 @@ pub enum FieldDiff {
 
 /*********        STATE DIFF        *********/
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StateDiff {
     pub present_diffs: u8,
     /// Changes to the game state since the previous (parent) state.
