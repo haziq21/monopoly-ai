@@ -229,9 +229,20 @@ impl StateDiff {
         }
     }
 
+    pub fn set_owned_properties_diff(&mut self, owned_properties: HashMap<u8, PropertyOwnership>) {
+        self.set_diff(
+            DIFF_ID_OWNED_PROPERTIES,
+            FieldDiff::OwnedProperties(owned_properties),
+        );
+    }
+
     /// Set a `seen_ccs` vector as the state's own diff.
     pub fn set_seen_ccs_diff(&mut self, seen_ccs: Vec<ChanceCard>) {
         self.set_diff(DIFF_ID_SEEN_CCS, FieldDiff::SeenCCs(seen_ccs));
+    }
+
+    pub fn set_seen_ccs_head_diff(&mut self, seen_ccs_head: usize) {
+        self.set_diff(DIFF_ID_SEEN_CCS_HEAD, FieldDiff::SeenCCsHead(seen_ccs_head));
     }
 
     pub fn set_level_1_rent_diff(&mut self, rent: u8) {
