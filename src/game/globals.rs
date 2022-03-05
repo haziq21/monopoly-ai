@@ -203,8 +203,12 @@ pub const DIFF_ID_SEEN_CCS: u8 = 3;
 pub const DIFF_ID_SEEN_CCS_HEAD: u8 = 2;
 pub const DIFF_ID_LEVEL_1_RENT: u8 = 1;
 
+/// The position of 'Jail' on the game board.
 pub const JAIL_POSITION: u8 = 9;
+/// The position of the 'Go to jail' tile on the game board.
 pub const GO_TO_JAIL_POSITION: u8 = 27;
+/// The total number of chance cards there are.
+pub const TOTAL_CHANCE_CARDS: u8 = 21;
 
 lazy_static! {
     /// Positions of the chance card tiles on the game board.
