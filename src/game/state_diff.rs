@@ -229,6 +229,13 @@ impl StateDiff {
         }
     }
 
+    pub fn set_current_player_diff(&mut self, curr_player: usize) {
+        self.set_diff(
+            DIFF_ID_CURRENT_PLAYER,
+            FieldDiff::CurrentPlayer(curr_player),
+        );
+    }
+
     pub fn set_owned_properties_diff(&mut self, owned_properties: HashMap<u8, PropertyOwnership>) {
         self.set_diff(
             DIFF_ID_OWNED_PROPERTIES,
