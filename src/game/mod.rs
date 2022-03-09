@@ -1,3 +1,8 @@
+// TODO: Update `StateDiff`'s current_player everywhere it's needed.
+// TODO: Optimise chance card branches.
+
+use std::collections::HashMap;
+
 mod globals;
 use globals::*;
 
@@ -5,7 +10,7 @@ mod agent;
 pub use agent::Agent;
 
 mod state_diff;
-use state_diff::{BranchType, FieldDiff, MoveType, StateDiff};
+use state_diff::{BranchType, FieldDiff, MoveType, PropertyOwnership, StateDiff};
 
 /// A simulation of Monopoly.
 pub struct Game {
@@ -49,6 +54,7 @@ impl Game {
 
     /// Push the new state node to `self.state_nodes` and return its handle.
     fn append_state(&mut self, state: StateDiff) -> usize {
+        // TODO: Update parent state's children vector
         if self.dirty_handles.len() == 0 {
             self.state_nodes.push(state);
             return self.state_nodes.len() - 1;
@@ -95,8 +101,23 @@ impl Game {
                 FieldDiff::CurrentPlayer(p) => p,
                 _ => unreachable!(),
             },
-            // Look for `players` in the parent state if this state doesn't contain it
+            // Look for `current_players` in the parent state if this state doesn't contain it
             None => self.diff_current_player(s.parent),
+        }
+    }
+
+    /// Return the properties that are owned by players at the specified state.
+    fn diff_owned_properties(&self, handle: usize) -> &HashMap<u8, PropertyOwnership> {
+        // Alias for the state in question
+        let s = &self.state_nodes[handle];
+
+        match s.get_diff_index(DIFF_ID_OWNED_PROPERTIES) {
+            Some(i) => match &s.diffs[i] {
+                FieldDiff::OwnedProperties(p) => p,
+                _ => unreachable!(),
+            },
+            // Look for `owned_properties` in the parent state if this state doesn't contain it
+            None => self.diff_owned_properties(s.parent),
         }
     }
 
@@ -110,8 +131,22 @@ impl Game {
                 FieldDiff::SeenCCs(p) => p,
                 _ => unreachable!(),
             },
-            // Look for `players` in the parent state if this state doesn't contain it
+            // Look for `seen_ccs` in the parent state if this state doesn't contain it
             None => self.diff_seen_ccs(s.parent),
+        }
+    }
+    /// Return seen_ccs_head from the specified state.
+    fn diff_seen_ccs_head(&self, handle: usize) -> usize {
+        // Alias for the state in question
+        let s = &self.state_nodes[handle];
+
+        match s.get_diff_index(DIFF_ID_SEEN_CCS_HEAD) {
+            Some(i) => match s.diffs[i] {
+                FieldDiff::SeenCCsHead(p) => p,
+                _ => unreachable!(),
+            },
+            // Look for `seen_ccs_head` in the parent state if this state doesn't contain it
+            None => self.diff_seen_ccs_head(s.parent),
         }
     }
 
@@ -206,8 +241,221 @@ impl Game {
         let mut children = vec![];
         let seen_ccs = self.diff_seen_ccs(handle);
 
-        if seen_ccs.len() == 21 {}
+        // We can deduce the exact chance card that we're going to get since we've seen them all
+        if seen_ccs.len() == 21 {
+            // The chance card that the player will definitely get
+            let definite_cc = seen_ccs[self.diff_seen_ccs_head(handle)];
+
+            // Get the child diffs according to the choicefulness of the chance card
+            if definite_cc.is_choiceless() {
+                // Create a template for the state diff
+                let mut template_diff = StateDiff::new_with_parent(handle);
+                // 100% chance of getting this card
+                template_diff.set_branch_type_diff(BranchType::Chance(1.));
+                // Apply the chance card's effects onto the template diff
+                self.mod_choiceless_cc(&mut template_diff, definite_cc, handle);
+                // template_diff is the only possibility since this is a choiceless chance card
+                return vec![template_diff];
+            }
+
+            return self.gen_choiceful_cc_children(handle, definite_cc);
+        }
+
+        // We can't know the exact chance card that we're
+        // going to get, so calculate all their probabilities
+        let unseen_cards = ChanceCard::unseen_counts(&seen_ccs);
+
+        for (card, count) in unseen_cards {
+            // Calculate the probability of encountering this chance card
+            let probability = count as f64 / (21 - seen_ccs.len()) as f64;
+
+            // Skip if the chance card has no chance of occurring
+            if probability == 0. {
+                continue;
+            }
+
+            // Create a child state
+            let mut diff = StateDiff::new_with_parent(handle);
+            // The state was reached by chance (getting this chance card by chance)
+            diff.set_branch_type_diff(BranchType::Chance(probability));
+
+            if card.is_choiceless() {
+                // If the chance card is a choiceless one, then the move will be over over once the
+                // chance card's effects are applied and it will be the next person's turn to roll dice
+                diff.next_move = MoveType::Roll;
+                self.mod_choiceless_cc(&mut diff, card, handle);
+            } else {
+                // If the chance card is a choiceful one, then the next move is to
+                // make a choice according to the chance card, so we reset the `next_move`
+                diff.next_move = MoveType::ChoicefulCC(card);
+            }
+
+            children.push(diff);
+        }
 
         children
+    }
+
+    fn gen_choiceful_cc_children(&self, handle: usize, cc: ChanceCard) -> Vec<StateDiff> {
+        match cc {
+            ChanceCard::RentTo1 => self.gen_cc_rent_to_x(1, handle),
+            ChanceCard::RentTo5 => self.gen_cc_rent_to_x(5, handle),
+            ChanceCard::SetRentInc => self.gen_cc_set_rent_change(true, handle),
+            _ => unimplemented!(),
+        }
+    }
+
+    /// Return child states that can be reached by getting the
+    /// 'RentToX'  chance card. Return a vector of all possible choice effects.
+    fn gen_cc_rent_to_x(&self, x: u8, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+        let curr_player = self.diff_current_player(handle);
+        let cc = if x == 1 {
+            ChanceCard::RentTo1
+        } else {
+            ChanceCard::RentTo5
+        };
+
+        for (pos, prop) in self.diff_owned_properties(handle) {
+            // "RentTo5" only applies to your properties (not opponents), and we don't
+            // need to add another child node if the rent level is already at its max/min
+            if x == 5 && prop.owner != curr_player || prop.rent_level == x {
+                continue;
+            }
+
+            // Create the diff
+            let mut child = StateDiff::new_with_parent(handle);
+            // Clone the owned_properties
+            let mut cloned_owned_props = self.diff_owned_properties(handle).clone();
+            // Update the owned_properties
+            cloned_owned_props.get_mut(&pos).unwrap().rent_level = x;
+            // Set the diff
+            child.set_owned_properties_diff(cloned_owned_props);
+            // Apply the boilerplate
+            self.add_cc_boilerplate(cc, &mut child, handle);
+
+            children.push(child);
+        }
+
+        children
+    }
+
+    fn gen_cc_set_rent_change(&self, increase: bool, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+        let cc = if increase {
+            ChanceCard::SetRentInc
+        } else {
+            ChanceCard::SetRentDec
+        };
+
+        // Loop through each color set
+        for (_, positions) in PROPS_BY_COLOR.iter() {
+            let mut new_state = StateDiff::new_with_parent(handle);
+            let mut owned_props = self.diff_owned_properties(handle).clone();
+            let mut has_effect = false;
+
+            // Loop through all the properties in this color set
+            for pos in positions {
+                // Check if a property exists at `pos`
+                if let Some(prop) = owned_props.get_mut(&pos) {
+                    has_effect |= if increase {
+                        prop.raise_rent()
+                    } else {
+                        prop.lower_rent()
+                    }
+                }
+            }
+
+            // Only store the new state if it's different
+            if has_effect {
+                new_state.set_owned_properties_diff(owned_props);
+                self.add_cc_boilerplate(cc, &mut new_state, handle);
+                children.push(new_state);
+            }
+        }
+
+        children
+    }
+
+    // fn gen_cc_side_rent_change(&self, increase: bool, handle: usize) -> Vec<StateDiff> {}
+
+    /*********        CHOICELESS CC STATE MODIFICATION        *********/
+
+    /// Modify `state` according to the effects of the `cc` chance card.
+    /// `parent_handle` is the handle of `state`'s parent.
+    fn mod_choiceless_cc(&self, state: &mut StateDiff, cc: ChanceCard, handle: usize) {
+        // Apply the boilerplate
+        self.add_cc_boilerplate(cc, state, handle);
+
+        match cc {
+            ChanceCard::PropertyTax => self.mod_cc_property_tax(state, handle),
+            ChanceCard::Level1Rent => self.mod_cc_level_1_rent(state),
+            ChanceCard::AllToParking => self.mod_cc_all_to_parking(state, handle),
+            _ => panic!("choiceful cc passed to Game.mod_choiceless_cc()"),
+        }
+    }
+
+    /// Modify `state` according to the effects of the 'property tax'
+    /// chance card. `parent_handle` is the handle of `state`'s parent.
+    fn mod_cc_property_tax(&self, state: &mut StateDiff, parent_handle: usize) {
+        let mut tax = 0;
+
+        // Tax $50 per property owned
+        for (_, prop) in self.diff_owned_properties(parent_handle) {
+            if prop.owner == self.diff_current_player(parent_handle) {
+                tax += 50;
+            }
+        }
+
+        // Clone the players
+        let mut updated_players = self.diff_players(parent_handle).clone();
+        // Update the players based on the calculated tax
+        updated_players[self.diff_current_player(parent_handle)].balance -= tax;
+        // Set the players diff
+        state.set_players_diff(updated_players);
+    }
+
+    /// Modify `state` according to the effects of the 'level 1 rent' chance card.
+    fn mod_cc_level_1_rent(&self, state: &mut StateDiff) {
+        // Set the diff to 2 rounds (player_count * 2 turns per player)
+        state.set_level_1_rent_diff(self.agents.len() as u8 * 2);
+    }
+
+    /// Modify `state` according to the effects of the 'all to parking'
+    /// chance card. `parent_handle` is the handle of `state`'s parent.
+    fn mod_cc_all_to_parking(&self, state: &mut StateDiff, parent_handle: usize) {
+        // Clone players
+        let mut updated_players = self.diff_players(parent_handle).clone();
+
+        // Move every player who's not in jail to free parking
+        for player in &mut updated_players {
+            if !player.in_jail {
+                player.position = JAIL_POSITION;
+            }
+        }
+
+        // Set the diff
+        state.set_players_diff(updated_players);
+    }
+
+    /// Modify `state` according to what happens after you get any chance card:
+    /// - Set `next_move` to `Roll`
+    /// - Update `current_player`
+    /// - Update `seen_ccs_head` if needed
+    ///
+    /// This does not apply the effects of that specific chance card.
+    fn add_cc_boilerplate(&self, card: ChanceCard, state: &mut StateDiff, handle: usize) {
+        // After you get a chance card, the next move is a roll
+        state.next_move = MoveType::Roll;
+        // And it's the next player's turn
+        state.set_current_player_diff((self.diff_current_player(handle) + 1) % self.agents.len());
+        // Update the seen_ccs_head if needed
+        if self.diff_seen_ccs(handle).len() == 21 {
+            state.set_seen_ccs_head_diff((self.diff_seen_ccs_head(handle) + 1) % 21);
+        } else {
+            let mut updated_seen_ccs = self.diff_seen_ccs(handle).clone();
+            updated_seen_ccs.push(card);
+            state.set_seen_ccs_diff(updated_seen_ccs);
+        }
     }
 }
