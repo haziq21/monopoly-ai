@@ -205,10 +205,12 @@ pub const DIFF_ID_LEVEL_1_RENT: u8 = 1;
 
 /// The position of 'Jail' on the game board.
 pub const JAIL_POSITION: u8 = 9;
+/// The position of 'Free parking' on the game board.
+pub const FREE_PARKING_POSITION: u8 = 18;
 /// The position of the 'Go to jail' tile on the game board.
 pub const GO_TO_JAIL_POSITION: u8 = 27;
 /// The total number of chance cards there are.
-pub const TOTAL_CHANCE_CARDS: u8 = 21;
+pub const TOTAL_CHANCE_CARDS: usize = 21;
 
 lazy_static! {
     /// Positions of the chance card tiles on the game board.
