@@ -56,6 +56,15 @@ impl PropertyOwnership {
 
         false
     }
+
+    /// Raise or lower the rent level by one, if possible. Return whether this had any effect.
+    pub fn change_rent(&mut self, increase: bool) -> bool {
+        if increase {
+            self.raise_rent()
+        } else {
+            self.lower_rent()
+        }
+    }
 }
 
 /*********        MOVE TYPE        *********/
@@ -80,6 +89,13 @@ impl MoveType {
             MoveType::Location
         } else {
             MoveType::Roll
+        }
+    }
+
+    pub fn is_roll(&self) -> bool {
+        match self {
+            MoveType::Roll => true,
+            _ => false,
         }
     }
 }
@@ -196,7 +212,7 @@ impl StateDiff {
 
     /// Insert the specified diff, or update it if it  
     /// already exists. Return a mutable reference to the diff.
-    fn set_diff(&mut self, diff_id: u8, diff: FieldDiff) -> &mut FieldDiff {
+    fn set_diff(&mut self, diff_id: u8, diff: FieldDiff) {
         // Get the new index of the diff field
         let diff_index = self.get_supposed_diff_index(diff_id);
 
@@ -209,34 +225,28 @@ impl StateDiff {
             // Amend the diff presence flag
             self.present_diffs &= 1;
         }
-
-        &mut self.diffs[diff_index]
     }
 
     /*********        DIFF SETTERS        *********/
 
     /// Set a `BranchType` as the state's own diff.
-    pub fn set_branch_type_diff(&mut self, branch_type: BranchType) {
+    pub fn set_branch_type(&mut self, branch_type: BranchType) {
         self.set_diff(DIFF_ID_BRANCH_TYPE, FieldDiff::BranchType(branch_type));
     }
 
     /// Set a `players` vector as the state's own diff.
-    /// Return a mutable reference to the modified diff.
-    pub fn set_players_diff(&mut self, players: Vec<Player>) -> &mut Vec<Player> {
-        match self.set_diff(DIFF_ID_PLAYERS, FieldDiff::Players(players)) {
-            FieldDiff::Players(p) => p,
-            _ => unreachable!(),
-        }
+    pub fn set_players(&mut self, players: Vec<Player>) {
+        self.set_diff(DIFF_ID_PLAYERS, FieldDiff::Players(players));
     }
 
-    pub fn set_current_player_diff(&mut self, curr_player: usize) {
+    pub fn set_current_pindex(&mut self, curr_player: usize) {
         self.set_diff(
             DIFF_ID_CURRENT_PLAYER,
             FieldDiff::CurrentPlayer(curr_player),
         );
     }
 
-    pub fn set_owned_properties_diff(&mut self, owned_properties: HashMap<u8, PropertyOwnership>) {
+    pub fn set_owned_properties(&mut self, owned_properties: HashMap<u8, PropertyOwnership>) {
         self.set_diff(
             DIFF_ID_OWNED_PROPERTIES,
             FieldDiff::OwnedProperties(owned_properties),
@@ -244,15 +254,15 @@ impl StateDiff {
     }
 
     /// Set a `seen_ccs` vector as the state's own diff.
-    pub fn set_seen_ccs_diff(&mut self, seen_ccs: Vec<ChanceCard>) {
+    pub fn set_seen_ccs(&mut self, seen_ccs: Vec<ChanceCard>) {
         self.set_diff(DIFF_ID_SEEN_CCS, FieldDiff::SeenCCs(seen_ccs));
     }
 
-    pub fn set_seen_ccs_head_diff(&mut self, seen_ccs_head: usize) {
+    pub fn set_top_cc(&mut self, seen_ccs_head: usize) {
         self.set_diff(DIFF_ID_SEEN_CCS_HEAD, FieldDiff::SeenCCsHead(seen_ccs_head));
     }
 
-    pub fn set_level_1_rent_diff(&mut self, rent: u8) {
+    pub fn set_level_1_rent(&mut self, rent: u8) {
         self.set_diff(DIFF_ID_LEVEL_1_RENT, FieldDiff::Level1Rent(rent));
     }
 }
