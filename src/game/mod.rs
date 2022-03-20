@@ -28,7 +28,7 @@ pub struct Game {
 }
 
 impl Game {
-    /*********        PUBLIC INTERFACES        *********/
+    /*********       PUBLIC INTERFACES        *********/
 
     /// Return a new game.
     pub fn new(agents: Vec<Agent>) -> Self {
@@ -71,7 +71,15 @@ impl Game {
 
     /// Return the player whose turn it currently is at the specified state.
     fn current_player(&self, handle: usize) -> &Player {
-        &self.diff_players(handle)[self.diff_current_player(handle)]
+        &self.diff_players(handle)[self.diff_current_pindex(handle)]
+    }
+
+    fn get_next_pindex(&self, handle: usize) -> usize {
+        (self.diff_current_pindex(handle) + 1) % self.agents.len()
+    }
+
+    fn get_next_top_cc(&self, handle: usize) -> usize {
+        (self.diff_top_cc(handle) + 1) % TOTAL_CHANCE_CARDS
     }
 
     /*********        STATE DIFF GETTERS        *********/
@@ -92,7 +100,7 @@ impl Game {
     }
 
     /// Return the index of the player whose turn it currently is at the specified state.
-    fn diff_current_player(&self, handle: usize) -> usize {
+    fn diff_current_pindex(&self, handle: usize) -> usize {
         // Alias for the state in question
         let s = &self.state_nodes[handle];
 
@@ -102,7 +110,7 @@ impl Game {
                 _ => unreachable!(),
             },
             // Look for `current_players` in the parent state if this state doesn't contain it
-            None => self.diff_current_player(s.parent),
+            None => self.diff_current_pindex(s.parent),
         }
     }
 
@@ -135,8 +143,8 @@ impl Game {
             None => self.diff_seen_ccs(s.parent),
         }
     }
-    /// Return seen_ccs_head from the specified state.
-    fn diff_seen_ccs_head(&self, handle: usize) -> usize {
+    /// Return top_cc from the specified state.
+    fn diff_top_cc(&self, handle: usize) -> usize {
         // Alias for the state in question
         let s = &self.state_nodes[handle];
 
@@ -146,7 +154,7 @@ impl Game {
                 _ => unreachable!(),
             },
             // Look for `seen_ccs_head` in the parent state if this state doesn't contain it
-            None => self.diff_seen_ccs_head(s.parent),
+            None => self.diff_top_cc(s.parent),
         }
     }
 
@@ -164,7 +172,8 @@ impl Game {
 
     /// Return child states that can be reached by rolling dice from the specified state.
     fn gen_roll_children(&self, handle: usize) -> Vec<StateDiff> {
-        let current_player_index = self.diff_current_player(handle);
+        // The index of the player whose turn it currently is
+        let i = self.diff_current_pindex(handle);
         let mut children = vec![];
 
         // Get the player out of jail if they're in jail
@@ -177,20 +186,27 @@ impl Game {
                 // Create a new diff
                 let mut diff = StateDiff::new_with_parent(handle);
                 // Update the branch type
-                diff.set_branch_type_diff(BranchType::Chance(roll.probability));
+                diff.set_branch_type(BranchType::Chance(roll.probability));
                 // Clone the players
-                let players = diff.set_players_diff(self.diff_players(handle).clone());
+                let mut players = self.diff_players(handle).clone();
+                // Update the current player's position
+                players[i].move_by(roll.sum);
 
                 // We didn't manage to roll doubles
                 if !roll.is_double {
                     // $100 penalty for not rolling doubles
-                    players[current_player_index].balance -= 100;
+                    players[i].balance -= 100;
                 }
 
-                // Update the current player's position
-                players[current_player_index].move_by(roll.sum);
                 // Set the next move
-                diff.next_move = MoveType::when_landed_on(players[current_player_index].position);
+                diff.next_move = MoveType::when_landed_on(players[i].position);
+                // Set the players diff
+                diff.set_players(players);
+                // Update the current_player if needed
+                if diff.next_move.is_roll() {
+                    diff.set_current_pindex(self.get_next_pindex(handle));
+                }
+
                 children.push(diff);
             }
         }
@@ -198,38 +214,43 @@ impl Game {
         else {
             // Loop through all possible dice results
             for roll in SIGNIFICANT_ROLLS.iter() {
-                // Create a new diff
-                let mut diff = StateDiff::new_with_parent(handle);
+                // Create a new state
+                let mut state = StateDiff::new_with_parent(handle);
                 // Update the branch type
-                diff.set_branch_type_diff(BranchType::Chance(roll.probability));
+                state.set_branch_type(BranchType::Chance(roll.probability));
                 // Clone the players
-                let players = diff.set_players_diff(self.diff_players(handle).clone());
-                // Alias for the player whose turn it currently is
-                let curr_player = &mut players[current_player_index];
+                let mut players = self.diff_players(handle).clone();
                 // Update the current player's position
-                curr_player.move_by(roll.sum);
+                players[i].move_by(roll.sum);
 
                 // Check if the player landed on 'go to jail'
-                if curr_player.position == GO_TO_JAIL_POSITION {
-                    curr_player.send_to_jail();
+                if players[i].position == GO_TO_JAIL_POSITION {
+                    players[i].send_to_jail();
                 }
                 // Check if this roll got doubles
                 else if roll.is_double {
                     // Increment the doubles_rolled counter
-                    curr_player.doubles_rolled += 1;
+                    players[i].doubles_rolled += 1;
 
                     // Go to jail after three consecutive doubles
-                    if curr_player.doubles_rolled == 3 {
-                        curr_player.send_to_jail();
+                    if players[i].doubles_rolled == 3 {
+                        players[i].send_to_jail();
                     }
                 } else {
                     // Reset the doubles counter
-                    curr_player.doubles_rolled = 0;
+                    players[i].doubles_rolled = 0;
                 }
 
                 // Set the next move
-                diff.next_move = MoveType::when_landed_on(curr_player.position);
-                children.push(diff);
+                state.next_move = MoveType::when_landed_on(players[i].position);
+                // Update the current_player if needed
+                if state.next_move.is_roll() && players[i].doubles_rolled == 0 {
+                    state.set_current_pindex(self.get_next_pindex(handle));
+                }
+                // Set the players diff
+                state.set_players(players);
+
+                children.push(state);
             }
         }
 
@@ -242,20 +263,14 @@ impl Game {
         let seen_ccs = self.diff_seen_ccs(handle);
 
         // We can deduce the exact chance card that we're going to get since we've seen them all
-        if seen_ccs.len() == 21 {
+        if seen_ccs.len() == TOTAL_CHANCE_CARDS {
             // The chance card that the player will definitely get
-            let definite_cc = seen_ccs[self.diff_seen_ccs_head(handle)];
+            let definite_cc = seen_ccs[self.diff_top_cc(handle)];
 
             // Get the child diffs according to the choicefulness of the chance card
             if definite_cc.is_choiceless() {
-                // Create a template for the state diff
-                let mut template_diff = StateDiff::new_with_parent(handle);
-                // 100% chance of getting this card
-                template_diff.set_branch_type_diff(BranchType::Chance(1.));
-                // Apply the chance card's effects onto the template diff
-                self.mod_choiceless_cc(&mut template_diff, definite_cc, handle);
-                // template_diff is the only possibility since this is a choiceless chance card
-                return vec![template_diff];
+                // This is the only possibility since this is a choiceless chance card
+                return vec![self.gen_choiceless_cc(definite_cc, handle, 1.)];
             }
 
             return self.gen_choiceful_cc_children(handle, definite_cc);
@@ -267,72 +282,65 @@ impl Game {
 
         for (card, count) in unseen_cards {
             // Calculate the probability of encountering this chance card
-            let probability = count as f64 / (21 - seen_ccs.len()) as f64;
+            let probability = count as f64 / (TOTAL_CHANCE_CARDS - seen_ccs.len()) as f64;
 
             // Skip if the chance card has no chance of occurring
             if probability == 0. {
                 continue;
             }
 
-            // Create a child state
-            let mut diff = StateDiff::new_with_parent(handle);
-            // The state was reached by chance (getting this chance card by chance)
-            diff.set_branch_type_diff(BranchType::Chance(probability));
-
             if card.is_choiceless() {
-                // If the chance card is a choiceless one, then the move will be over over once the
-                // chance card's effects are applied and it will be the next person's turn to roll dice
-                diff.next_move = MoveType::Roll;
-                self.mod_choiceless_cc(&mut diff, card, handle);
+                children.push(self.gen_choiceless_cc(card, handle, probability));
             } else {
-                // If the chance card is a choiceful one, then the next move is to
-                // make a choice according to the chance card, so we reset the `next_move`
-                diff.next_move = MoveType::ChoicefulCC(card);
-            }
-
-            children.push(diff);
+                let mut state = StateDiff::new_with_parent(handle);
+                state.set_branch_type(BranchType::Chance(probability));
+                state.next_move = MoveType::ChoicefulCC(card);
+                children.push(state);
+            };
         }
 
         children
     }
 
+    /*********        CHOICEFUL CC STATE GENERATION        *********/
+
+    /// Return child states that can be reached by getting the
     fn gen_choiceful_cc_children(&self, handle: usize, cc: ChanceCard) -> Vec<StateDiff> {
         match cc {
-            ChanceCard::RentTo1 => self.gen_cc_rent_to_x(1, handle),
-            ChanceCard::RentTo5 => self.gen_cc_rent_to_x(5, handle),
+            ChanceCard::RentTo5 => self.gen_cc_rent_to_x(true, handle),
+            ChanceCard::RentTo1 => self.gen_cc_rent_to_x(false, handle),
             ChanceCard::SetRentInc => self.gen_cc_set_rent_change(true, handle),
+            ChanceCard::SetRentDec => self.gen_cc_set_rent_change(false, handle),
+            ChanceCard::SideRentInc => self.gen_cc_side_rent_change(true, handle),
+            ChanceCard::SideRentDec => self.gen_cc_side_rent_change(false, handle),
             _ => unimplemented!(),
         }
     }
 
-    /// Return child states that can be reached by getting the
     /// 'RentToX'  chance card. Return a vector of all possible choice effects.
-    fn gen_cc_rent_to_x(&self, x: u8, handle: usize) -> Vec<StateDiff> {
+    fn gen_cc_rent_to_x(&self, max: bool, handle: usize) -> Vec<StateDiff> {
         let mut children = vec![];
-        let curr_player = self.diff_current_player(handle);
-        let cc = if x == 1 {
-            ChanceCard::RentTo1
+        let curr_pindex = self.diff_current_pindex(handle);
+        let (cc, target_rent) = if max {
+            (ChanceCard::RentTo1, 1)
         } else {
-            ChanceCard::RentTo5
+            (ChanceCard::RentTo5, 5)
         };
 
         for (pos, prop) in self.diff_owned_properties(handle) {
             // "RentTo5" only applies to your properties (not opponents), and we don't
             // need to add another child node if the rent level is already at its max/min
-            if x == 5 && prop.owner != curr_player || prop.rent_level == x {
+            if max && prop.owner != curr_pindex || prop.rent_level == target_rent {
                 continue;
             }
 
             // Create the diff
-            let mut child = StateDiff::new_with_parent(handle);
-            // Clone the owned_properties
-            let mut cloned_owned_props = self.diff_owned_properties(handle).clone();
+            let mut child = self.new_state_from_cc(cc, handle);
+            child.set_branch_type(BranchType::Choice);
             // Update the owned_properties
-            cloned_owned_props.get_mut(&pos).unwrap().rent_level = x;
-            // Set the diff
-            child.set_owned_properties_diff(cloned_owned_props);
-            // Apply the boilerplate
-            self.add_cc_boilerplate(cc, &mut child, handle);
+            let mut owned_props = self.diff_owned_properties(handle).clone();
+            owned_props.get_mut(&pos).unwrap().rent_level = target_rent;
+            child.set_owned_properties(owned_props);
 
             children.push(child);
         }
@@ -350,26 +358,20 @@ impl Game {
 
         // Loop through each color set
         for (_, positions) in PROPS_BY_COLOR.iter() {
-            let mut new_state = StateDiff::new_with_parent(handle);
+            let mut new_state = self.new_state_from_cc(cc, handle);
             let mut owned_props = self.diff_owned_properties(handle).clone();
             let mut has_effect = false;
-
             // Loop through all the properties in this color set
             for pos in positions {
                 // Check if a property exists at `pos`
                 if let Some(prop) = owned_props.get_mut(&pos) {
-                    has_effect |= if increase {
-                        prop.raise_rent()
-                    } else {
-                        prop.lower_rent()
-                    }
+                    has_effect |= prop.change_rent(increase);
                 }
             }
-
             // Only store the new state if it's different
             if has_effect {
-                new_state.set_owned_properties_diff(owned_props);
-                self.add_cc_boilerplate(cc, &mut new_state, handle);
+                new_state.set_branch_type(BranchType::Choice);
+                new_state.set_owned_properties(owned_props);
                 children.push(new_state);
             }
         }
@@ -377,85 +379,131 @@ impl Game {
         children
     }
 
-    // fn gen_cc_side_rent_change(&self, increase: bool, handle: usize) -> Vec<StateDiff> {}
+    fn gen_cc_side_rent_change(&self, increase: bool, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+        let cc = if increase {
+            ChanceCard::SideRentInc
+        } else {
+            ChanceCard::SideRentDec
+        };
 
-    /*********        CHOICELESS CC STATE MODIFICATION        *********/
+        for positions in PROPS_BY_SIDE.iter() {
+            let mut child = self.new_state_from_cc(cc, handle);
+            let mut owned_properties = self.diff_owned_properties(handle).clone();
+            let mut has_effect = false;
+
+            for pos in positions {
+                // Check if the property is owned
+                if let Some(prop) = owned_properties.get_mut(&pos) {
+                    has_effect |= prop.change_rent(increase);
+                }
+            }
+
+            // Save the child if it's different
+            if has_effect {
+                child.set_branch_type(BranchType::Choice);
+                child.set_owned_properties(owned_properties);
+                children.push(child);
+            }
+        }
+
+        children
+    }
+
+    fn gen_cc_rent_spike(&self, handle: usize) -> Vec<StateDiff> {
+        vec![]
+    }
+    /*********        CHOICELESS CC STATE GENERATION        *********/
 
     /// Modify `state` according to the effects of the `cc` chance card.
     /// `parent_handle` is the handle of `state`'s parent.
-    fn mod_choiceless_cc(&self, state: &mut StateDiff, cc: ChanceCard, handle: usize) {
-        // Apply the boilerplate
-        self.add_cc_boilerplate(cc, state, handle);
-
+    fn gen_choiceless_cc(&self, cc: ChanceCard, handle: usize, probability: f64) -> StateDiff {
         match cc {
-            ChanceCard::PropertyTax => self.mod_cc_property_tax(state, handle),
-            ChanceCard::Level1Rent => self.mod_cc_level_1_rent(state),
-            ChanceCard::AllToParking => self.mod_cc_all_to_parking(state, handle),
+            ChanceCard::PropertyTax => self.gen_cc_property_tax(probability, handle),
+            ChanceCard::Level1Rent => self.gen_cc_level_1_rent(probability, handle),
+            ChanceCard::AllToParking => self.gen_cc_all_to_parking(probability, handle),
             _ => panic!("choiceful cc passed to Game.mod_choiceless_cc()"),
         }
     }
 
     /// Modify `state` according to the effects of the 'property tax'
     /// chance card. `parent_handle` is the handle of `state`'s parent.
-    fn mod_cc_property_tax(&self, state: &mut StateDiff, parent_handle: usize) {
+    fn gen_cc_property_tax(&self, probability: f64, handle: usize) -> StateDiff {
         let mut tax = 0;
+        let i = self.diff_current_pindex(handle);
 
         // Tax $50 per property owned
-        for (_, prop) in self.diff_owned_properties(parent_handle) {
-            if prop.owner == self.diff_current_player(parent_handle) {
+        for (_, prop) in self.diff_owned_properties(handle) {
+            if prop.owner == i {
                 tax += 50;
             }
         }
 
         // Clone the players
-        let mut updated_players = self.diff_players(parent_handle).clone();
+        let mut updated_players = self.diff_players(handle).clone();
         // Update the players based on the calculated tax
-        updated_players[self.diff_current_player(parent_handle)].balance -= tax;
-        // Set the players diff
-        state.set_players_diff(updated_players);
+        updated_players[i].balance -= tax;
+
+        // Create a new state
+        let mut state = self.new_state_from_cc(ChanceCard::PropertyTax, handle);
+        state.set_branch_type(BranchType::Chance(probability));
+        state.set_players(updated_players);
+
+        state
     }
 
     /// Modify `state` according to the effects of the 'level 1 rent' chance card.
-    fn mod_cc_level_1_rent(&self, state: &mut StateDiff) {
+    fn gen_cc_level_1_rent(&self, probability: f64, handle: usize) -> StateDiff {
+        let mut state = self.new_state_from_cc(ChanceCard::Level1Rent, handle);
+        state.set_branch_type(BranchType::Chance(probability));
         // Set the diff to 2 rounds (player_count * 2 turns per player)
-        state.set_level_1_rent_diff(self.agents.len() as u8 * 2);
+        state.set_level_1_rent(self.agents.len() as u8 * 2);
+
+        state
     }
 
     /// Modify `state` according to the effects of the 'all to parking'
     /// chance card. `parent_handle` is the handle of `state`'s parent.
-    fn mod_cc_all_to_parking(&self, state: &mut StateDiff, parent_handle: usize) {
+    fn gen_cc_all_to_parking(&self, probability: f64, handle: usize) -> StateDiff {
         // Clone players
-        let mut updated_players = self.diff_players(parent_handle).clone();
+        let mut updated_players = self.diff_players(handle).clone();
 
         // Move every player who's not in jail to free parking
         for player in &mut updated_players {
             if !player.in_jail {
-                player.position = JAIL_POSITION;
+                player.position = FREE_PARKING_POSITION;
             }
         }
 
-        // Set the diff
-        state.set_players_diff(updated_players);
+        // Create a new state
+        let mut state = self.new_state_from_cc(ChanceCard::AllToParking, handle);
+        state.set_branch_type(BranchType::Chance(probability));
+        state.set_players(updated_players);
+
+        state
     }
 
-    /// Modify `state` according to what happens after you get any chance card:
     /// - Set `next_move` to `Roll`
-    /// - Update `current_player`
+    /// - Update `current_player` if needed
     /// - Update `seen_ccs_head` if needed
-    ///
-    /// This does not apply the effects of that specific chance card.
-    fn add_cc_boilerplate(&self, card: ChanceCard, state: &mut StateDiff, handle: usize) {
-        // After you get a chance card, the next move is a roll
+    fn new_state_from_cc(&self, card: ChanceCard, handle: usize) -> StateDiff {
+        let mut state = StateDiff::new_with_parent(handle);
         state.next_move = MoveType::Roll;
-        // And it's the next player's turn
-        state.set_current_player_diff((self.diff_current_player(handle) + 1) % self.agents.len());
-        // Update the seen_ccs_head if needed
-        if self.diff_seen_ccs(handle).len() == 21 {
-            state.set_seen_ccs_head_diff((self.diff_seen_ccs_head(handle) + 1) % 21);
-        } else {
-            let mut updated_seen_ccs = self.diff_seen_ccs(handle).clone();
-            updated_seen_ccs.push(card);
-            state.set_seen_ccs_diff(updated_seen_ccs);
+
+        // It's the next player's turn if the current player didn't roll doubles
+        if self.current_player(handle).doubles_rolled == 0 {
+            state.set_current_pindex(self.get_next_pindex(handle));
         }
+
+        // Update the top_cc if needed
+        if self.diff_seen_ccs(handle).len() == TOTAL_CHANCE_CARDS {
+            state.set_top_cc(self.get_next_top_cc(handle));
+        } else {
+            let mut seen_ccs = self.diff_seen_ccs(handle).clone();
+            seen_ccs.push(card);
+            state.set_seen_ccs(seen_ccs);
+        }
+
+        state
     }
 }
