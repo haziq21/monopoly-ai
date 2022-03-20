@@ -331,7 +331,7 @@ impl Game {
 
     /// Return child states that can be reached by getting a choiceful chance card.
     fn gen_choiceful_cc_children(&self, handle: usize, cc: ChanceCard) -> Vec<StateDiff> {
-        match cc {
+        let children = match cc {
             ChanceCard::RentTo5 => self.gen_cc_rent_to_x(true, handle),
             ChanceCard::RentTo1 => self.gen_cc_rent_to_x(false, handle),
             ChanceCard::SetRentInc => self.gen_cc_set_rent_change(true, handle),
@@ -344,6 +344,12 @@ impl Game {
             ChanceCard::OpponentToJail => self.gen_cc_opponent_to_jail(handle),
             ChanceCard::GoToAnyProperty => self.gen_cc_go_to_any_property(handle),
             _ => panic!("choiceless cc passed to Game.gen_choiceful_cc_children()"),
+        };
+
+        if children.len() > 0 {
+            children
+        } else {
+            self.new_state_from_cc(cc, handle)
         }
     }
 
