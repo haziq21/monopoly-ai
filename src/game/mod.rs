@@ -315,6 +315,7 @@ impl Game {
             ChanceCard::SideRentDec => self.gen_cc_side_rent_change(false, handle),
             ChanceCard::RentSpike => self.gen_cc_rent_spike(handle),
             ChanceCard::Bonus => self.gen_cc_bonus(handle),
+            ChanceCard::SwapProperty => self.gen_cc_swap_property(handle),
             _ => unimplemented!(),
         }
     }
@@ -473,6 +474,41 @@ impl Game {
             new_state.set_branch_type(BranchType::Choice);
             new_state.set_players(players);
             children.push(new_state);
+        }
+
+        children
+    }
+
+    fn gen_cc_swap_property(&self, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+        let parent_props = self.diff_owned_properties(handle);
+        let curr_pindex = self.diff_current_pindex(handle);
+
+        // Loop through my properties
+        for (my_pos, my_prop) in parent_props {
+            // Skip opponent properties
+            if my_prop.owner != curr_pindex {
+                continue;
+            }
+
+            // Loop through opponent properties
+            for (opp_pos, opp_prop) in parent_props {
+                // Skip my properties
+                if opp_prop.owner == curr_pindex {
+                    continue;
+                }
+
+                // Swap properties
+                let mut props = parent_props.clone();
+                props.get_mut(&my_pos).unwrap().owner = opp_prop.owner;
+                props.get_mut(&opp_pos).unwrap().owner = my_prop.owner;
+
+                // Add the new state
+                let mut new_state = self.new_state_from_cc(ChanceCard::SwapProperty, handle);
+                new_state.set_branch_type(BranchType::Choice);
+                new_state.set_owned_properties(props);
+                children.push(new_state);
+            }
         }
 
         children
