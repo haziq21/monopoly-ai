@@ -314,6 +314,7 @@ impl Game {
             ChanceCard::SideRentInc => self.gen_cc_side_rent_change(true, handle),
             ChanceCard::SideRentDec => self.gen_cc_side_rent_change(false, handle),
             ChanceCard::RentSpike => self.gen_cc_rent_spike(handle),
+            ChanceCard::Bonus => self.gen_cc_bonus(handle),
             _ => unimplemented!(),
         }
     }
@@ -338,6 +339,7 @@ impl Game {
             // Create the diff
             let mut child = self.new_state_from_cc(cc, handle);
             child.set_branch_type(BranchType::Choice);
+
             // Update the owned_properties
             let mut owned_props = self.diff_owned_properties(handle).clone();
             owned_props.get_mut(&pos).unwrap().rent_level = target_rent;
@@ -361,6 +363,7 @@ impl Game {
         for (_, positions) in PROPS_BY_COLOR.iter() {
             let mut owned_props = self.diff_owned_properties(handle).clone();
             let mut has_effect = false;
+
             // Loop through all the properties in this color set
             for pos in positions {
                 // Check if a property exists at `pos`
@@ -368,6 +371,7 @@ impl Game {
                     has_effect |= prop.change_rent(increase);
                 }
             }
+
             // Only store the new state if it's different
             if has_effect {
                 let mut new_state = self.new_state_from_cc(cc, handle);
@@ -445,6 +449,35 @@ impl Game {
 
         children
     }
+
+    fn gen_cc_bonus(&self, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+        let curr_pindex = self.diff_current_pindex(handle);
+
+        for i in 0..self.agents.len() {
+            // Skip the current player
+            if i == curr_pindex {
+                continue;
+            }
+
+            let mut players = self.diff_players(handle).clone();
+
+            // Award $200 bonus to this player
+            players[curr_pindex].balance += 200;
+
+            // Award $200 bonus to an opponent
+            players[i].balance += 200;
+
+            // Add the new state
+            let mut new_state = self.new_state_from_cc(ChanceCard::Bonus, handle);
+            new_state.set_branch_type(BranchType::Choice);
+            new_state.set_players(players);
+            children.push(new_state);
+        }
+
+        children
+    }
+
     /*********        CHOICELESS CC STATE GENERATION        *********/
 
     /// Modify `state` according to the effects of the `cc` chance card.
