@@ -316,6 +316,7 @@ impl Game {
             ChanceCard::RentSpike => self.gen_cc_rent_spike(handle),
             ChanceCard::Bonus => self.gen_cc_bonus(handle),
             ChanceCard::SwapProperty => self.gen_cc_swap_property(handle),
+            ChanceCard::OpponentToJail => self.gen_cc_opponent_to_jail(handle),
             _ => unimplemented!(),
         }
     }
@@ -509,6 +510,30 @@ impl Game {
                 new_state.set_owned_properties(props);
                 children.push(new_state);
             }
+        }
+
+        children
+    }
+
+    fn gen_cc_opponent_to_jail(&self, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+        let curr_pindex = self.diff_current_pindex(handle);
+
+        for i in 0..self.agents.len() {
+            // Skip the current player
+            if i == curr_pindex {
+                continue;
+            }
+
+            // Send the opponent to jail
+            let mut players = self.diff_players(handle).clone();
+            players[i].send_to_jail();
+
+            // Add the new state
+            let mut new_state = self.new_state_from_cc(ChanceCard::OpponentToJail, handle);
+            new_state.set_branch_type(BranchType::Choice);
+            new_state.set_players(players);
+            children.push(new_state);
         }
 
         children
