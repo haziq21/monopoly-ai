@@ -317,6 +317,7 @@ impl Game {
             ChanceCard::Bonus => self.gen_cc_bonus(handle),
             ChanceCard::SwapProperty => self.gen_cc_swap_property(handle),
             ChanceCard::OpponentToJail => self.gen_cc_opponent_to_jail(handle),
+            ChanceCard::GoToAnyProperty => self.gen_cc_go_to_any_property(handle),
             _ => unimplemented!(),
         }
     }
@@ -533,6 +534,34 @@ impl Game {
             let mut new_state = self.new_state_from_cc(ChanceCard::OpponentToJail, handle);
             new_state.set_branch_type(BranchType::Choice);
             new_state.set_players(players);
+            children.push(new_state);
+        }
+
+        children
+    }
+
+    fn gen_cc_go_to_any_property(&self, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+        let curr_pindex = self.diff_current_pindex(handle);
+
+        for pos in PROP_POSITIONS.iter() {
+            // Move the player to any property
+            let mut players = self.diff_players(handle).clone();
+            players[curr_pindex].position = *pos;
+
+            // Create the new state
+            let mut new_state = StateDiff::new_with_parent(handle);
+            new_state.next_move = MoveType::Property;
+
+            // Update top_cc or seen_ccs
+            if self.diff_seen_ccs(handle).len() == TOTAL_CHANCE_CARDS {
+                new_state.set_top_cc(self.get_next_top_cc(handle));
+            } else {
+                let mut seen_ccs = self.diff_seen_ccs(handle).clone();
+                seen_ccs.push(ChanceCard::GoToAnyProperty);
+                new_state.set_seen_ccs(seen_ccs);
+            }
+
             children.push(new_state);
         }
 
