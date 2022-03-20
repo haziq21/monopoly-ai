@@ -52,6 +52,21 @@ impl Game {
 
     /*********        HELPERS        *********/
 
+    /// Return the player whose turn it currently is at the specified state.
+    fn get_current_player(&self, handle: usize) -> &Player {
+        &self.diff_players(handle)[self.diff_current_pindex(handle)]
+    }
+
+    /// Return the index of the player whose turn it will be next.
+    fn get_next_pindex(&self, handle: usize) -> usize {
+        (self.diff_current_pindex(handle) + 1) % self.agents.len()
+    }
+
+    /// Return the next value of `top_cc`.
+    fn get_next_top_cc(&self, handle: usize) -> usize {
+        (self.diff_top_cc(handle) + 1) % TOTAL_CHANCE_CARDS
+    }
+
     /// Push the new state node to `self.state_nodes` and return its handle.
     fn append_state(&mut self, state: StateDiff) -> usize {
         // TODO: Update parent state's children vector
@@ -67,19 +82,29 @@ impl Game {
         i
     }
 
-    /*********        STATE PROPERTY GETTERS        *********/
+    /// Return a `StateDiff` with the boilerplate for chance cards:
+    /// - Sets `next_move` to `Roll`
+    /// - Updates `current_player` if needed
+    /// - Updates `seen_ccs` or `top_cc`
+    fn new_state_from_cc(&self, card: ChanceCard, handle: usize) -> StateDiff {
+        let mut state = StateDiff::new_with_parent(handle);
+        state.next_move = MoveType::Roll;
 
-    /// Return the player whose turn it currently is at the specified state.
-    fn current_player(&self, handle: usize) -> &Player {
-        &self.diff_players(handle)[self.diff_current_pindex(handle)]
-    }
+        // It's the next player's turn if the current player didn't roll doubles
+        if self.get_current_player(handle).doubles_rolled == 0 {
+            state.set_current_pindex(self.get_next_pindex(handle));
+        }
 
-    fn get_next_pindex(&self, handle: usize) -> usize {
-        (self.diff_current_pindex(handle) + 1) % self.agents.len()
-    }
+        // Update the top_cc if needed
+        if self.diff_seen_ccs(handle).len() == TOTAL_CHANCE_CARDS {
+            state.set_top_cc(self.get_next_top_cc(handle));
+        } else {
+            let mut seen_ccs = self.diff_seen_ccs(handle).clone();
+            seen_ccs.push(card);
+            state.set_seen_ccs(seen_ccs);
+        }
 
-    fn get_next_top_cc(&self, handle: usize) -> usize {
-        (self.diff_top_cc(handle) + 1) % TOTAL_CHANCE_CARDS
+        state
     }
 
     /*********        STATE DIFF GETTERS        *********/
@@ -158,7 +183,7 @@ impl Game {
         }
     }
 
-    /*********        STATE GENERATION        *********/
+    /*********        GENERAL STATE GENERATION        *********/
 
     /// Return child states that can be reached from the specified state.
     fn gen_children(&self, handle: usize) -> Vec<StateDiff> {
@@ -177,7 +202,7 @@ impl Game {
         let mut children = vec![];
 
         // Get the player out of jail if they're in jail
-        if self.current_player(handle).in_jail {
+        if self.get_current_player(handle).in_jail {
             // Try rolling doubles to get out of jail
             let double_probabilities = roll_for_doubles(3);
 
@@ -270,7 +295,7 @@ impl Game {
             // Get the child diffs according to the choicefulness of the chance card
             if definite_cc.is_choiceless() {
                 // This is the only possibility since this is a choiceless chance card
-                return vec![self.gen_choiceless_cc(definite_cc, handle, 1.)];
+                return vec![self.gen_choiceless_cc_child(definite_cc, handle, 1.)];
             }
 
             return self.gen_choiceful_cc_children(handle, definite_cc);
@@ -281,16 +306,16 @@ impl Game {
         let unseen_cards = ChanceCard::unseen_counts(&seen_ccs);
 
         for (card, count) in unseen_cards {
-            // Calculate the probability of encountering this chance card
-            let probability = count as f64 / (TOTAL_CHANCE_CARDS - seen_ccs.len()) as f64;
-
             // Skip if the chance card has no chance of occurring
-            if probability == 0. {
+            if count == 0 {
                 continue;
             }
 
+            // Calculate the probability of encountering this chance card
+            let probability = count as f64 / (TOTAL_CHANCE_CARDS - seen_ccs.len()) as f64;
+
             if card.is_choiceless() {
-                children.push(self.gen_choiceless_cc(card, handle, probability));
+                children.push(self.gen_choiceless_cc_child(card, handle, probability));
             } else {
                 let mut state = StateDiff::new_with_parent(handle);
                 state.set_branch_type(BranchType::Chance(probability));
@@ -304,7 +329,7 @@ impl Game {
 
     /*********        CHOICEFUL CC STATE GENERATION        *********/
 
-    /// Return child states that can be reached by getting the
+    /// Return child states that can be reached by getting a choiceful chance card.
     fn gen_choiceful_cc_children(&self, handle: usize, cc: ChanceCard) -> Vec<StateDiff> {
         match cc {
             ChanceCard::RentTo5 => self.gen_cc_rent_to_x(true, handle),
@@ -318,11 +343,10 @@ impl Game {
             ChanceCard::SwapProperty => self.gen_cc_swap_property(handle),
             ChanceCard::OpponentToJail => self.gen_cc_opponent_to_jail(handle),
             ChanceCard::GoToAnyProperty => self.gen_cc_go_to_any_property(handle),
-            _ => unimplemented!(),
+            _ => panic!("choiceless cc passed to Game.gen_choiceful_cc_children()"),
         }
     }
 
-    /// 'RentToX'  chance card. Return a vector of all possible choice effects.
     fn gen_cc_rent_to_x(&self, max: bool, handle: usize) -> Vec<StateDiff> {
         let mut children = vec![];
         let curr_pindex = self.diff_current_pindex(handle);
@@ -396,7 +420,6 @@ impl Game {
         };
 
         for positions in PROPS_BY_SIDE.iter() {
-            let mut child = self.new_state_from_cc(cc, handle);
             let mut owned_properties = self.diff_owned_properties(handle).clone();
             let mut has_effect = false;
 
@@ -409,6 +432,7 @@ impl Game {
 
             // Save the child if it's different
             if has_effect {
+                let mut child = self.new_state_from_cc(cc, handle);
                 child.set_branch_type(BranchType::Choice);
                 child.set_owned_properties(owned_properties);
                 children.push(child);
@@ -551,6 +575,8 @@ impl Game {
 
             // Create the new state
             let mut new_state = StateDiff::new_with_parent(handle);
+            new_state.set_branch_type(BranchType::Choice);
+            new_state.set_players(players);
             new_state.next_move = MoveType::Property;
 
             // Update top_cc or seen_ccs
@@ -570,19 +596,21 @@ impl Game {
 
     /*********        CHOICELESS CC STATE GENERATION        *********/
 
-    /// Modify `state` according to the effects of the `cc` chance card.
-    /// `parent_handle` is the handle of `state`'s parent.
-    fn gen_choiceless_cc(&self, cc: ChanceCard, handle: usize, probability: f64) -> StateDiff {
+    /// Return child states that can be reached by getting a choiceless chance card.
+    fn gen_choiceless_cc_child(
+        &self,
+        cc: ChanceCard,
+        handle: usize,
+        probability: f64,
+    ) -> StateDiff {
         match cc {
             ChanceCard::PropertyTax => self.gen_cc_property_tax(probability, handle),
             ChanceCard::Level1Rent => self.gen_cc_level_1_rent(probability, handle),
             ChanceCard::AllToParking => self.gen_cc_all_to_parking(probability, handle),
-            _ => panic!("choiceful cc passed to Game.mod_choiceless_cc()"),
+            _ => panic!("choiceful cc passed to Game.gen_choiceless_cc()"),
         }
     }
 
-    /// Modify `state` according to the effects of the 'property tax'
-    /// chance card. `parent_handle` is the handle of `state`'s parent.
     fn gen_cc_property_tax(&self, probability: f64, handle: usize) -> StateDiff {
         let mut tax = 0;
         let i = self.diff_current_pindex(handle);
@@ -607,7 +635,6 @@ impl Game {
         state
     }
 
-    /// Modify `state` according to the effects of the 'level 1 rent' chance card.
     fn gen_cc_level_1_rent(&self, probability: f64, handle: usize) -> StateDiff {
         let mut state = self.new_state_from_cc(ChanceCard::Level1Rent, handle);
         state.set_branch_type(BranchType::Chance(probability));
@@ -617,8 +644,6 @@ impl Game {
         state
     }
 
-    /// Modify `state` according to the effects of the 'all to parking'
-    /// chance card. `parent_handle` is the handle of `state`'s parent.
     fn gen_cc_all_to_parking(&self, probability: f64, handle: usize) -> StateDiff {
         // Clone players
         let mut updated_players = self.diff_players(handle).clone();
@@ -634,30 +659,6 @@ impl Game {
         let mut state = self.new_state_from_cc(ChanceCard::AllToParking, handle);
         state.set_branch_type(BranchType::Chance(probability));
         state.set_players(updated_players);
-
-        state
-    }
-
-    /// - Set `next_move` to `Roll`
-    /// - Update `current_player` if needed
-    /// - Update `seen_ccs_head` if needed
-    fn new_state_from_cc(&self, card: ChanceCard, handle: usize) -> StateDiff {
-        let mut state = StateDiff::new_with_parent(handle);
-        state.next_move = MoveType::Roll;
-
-        // It's the next player's turn if the current player didn't roll doubles
-        if self.current_player(handle).doubles_rolled == 0 {
-            state.set_current_pindex(self.get_next_pindex(handle));
-        }
-
-        // Update the top_cc if needed
-        if self.diff_seen_ccs(handle).len() == TOTAL_CHANCE_CARDS {
-            state.set_top_cc(self.get_next_top_cc(handle));
-        } else {
-            let mut seen_ccs = self.diff_seen_ccs(handle).clone();
-            seen_ccs.push(card);
-            state.set_seen_ccs(seen_ccs);
-        }
 
         state
     }
