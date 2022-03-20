@@ -313,6 +313,7 @@ impl Game {
             ChanceCard::SetRentDec => self.gen_cc_set_rent_change(false, handle),
             ChanceCard::SideRentInc => self.gen_cc_side_rent_change(true, handle),
             ChanceCard::SideRentDec => self.gen_cc_side_rent_change(false, handle),
+            ChanceCard::RentSpike => self.gen_cc_rent_spike(handle),
             _ => unimplemented!(),
         }
     }
@@ -411,7 +412,38 @@ impl Game {
     }
 
     fn gen_cc_rent_spike(&self, handle: usize) -> Vec<StateDiff> {
-        vec![]
+        let mut children = vec![];
+        let i = self.diff_current_pindex(handle);
+
+        for (pos, prop) in self.diff_owned_properties(handle) {
+            // Skip if this property isn't owned by the current player
+            if prop.owner != i {
+                continue;
+            }
+
+            let mut properties = self.diff_owned_properties(handle).clone();
+            let mut has_effect = false;
+
+            // Raise this property's rent level
+            has_effect |= properties.get_mut(&pos).unwrap().raise_rent();
+
+            // Lower neighbours' rent levels (if they're owned)
+            for n_pos in PROPERTY_NEIGHBOURS[&pos] {
+                if let Some(n_prop) = properties.get_mut(&n_pos) {
+                    has_effect |= n_prop.lower_rent();
+                }
+            }
+
+            // Store new state if it's different
+            if has_effect {
+                let mut state = self.new_state_from_cc(ChanceCard::RentSpike, handle);
+                state.set_branch_type(BranchType::Choice);
+                state.set_owned_properties(properties);
+                children.push(state);
+            }
+        }
+
+        children
     }
     /*********        CHOICELESS CC STATE GENERATION        *********/
 
