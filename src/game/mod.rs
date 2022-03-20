@@ -359,7 +359,6 @@ impl Game {
 
         // Loop through each color set
         for (_, positions) in PROPS_BY_COLOR.iter() {
-            let mut new_state = self.new_state_from_cc(cc, handle);
             let mut owned_props = self.diff_owned_properties(handle).clone();
             let mut has_effect = false;
             // Loop through all the properties in this color set
@@ -371,6 +370,7 @@ impl Game {
             }
             // Only store the new state if it's different
             if has_effect {
+                let mut new_state = self.new_state_from_cc(cc, handle);
                 new_state.set_branch_type(BranchType::Choice);
                 new_state.set_owned_properties(owned_props);
                 children.push(new_state);
