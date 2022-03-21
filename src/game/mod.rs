@@ -190,6 +190,8 @@ impl Game {
         match self.state_nodes[handle].next_move {
             MoveType::Roll => self.gen_roll_children(handle),
             MoveType::ChanceCard => self.gen_cc_children(handle),
+            MoveType::ChoicefulCC(cc) => self.gen_choiceful_cc_children(handle, cc),
+            MoveType::Location => self.gen_location_children(handle),
             MoveType::Undefined => unreachable!(),
             _ => unimplemented!(),
         }
@@ -327,6 +329,48 @@ impl Game {
         children
     }
 
+    /// Return child states that can be reached by landing on a location tile.
+    fn gen_location_children(&self, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+        let curr_pindex = self.diff_current_pindex(handle);
+        // It's the next player's turn if the current player didn't roll doubles
+        let next_players_turn = self.get_current_player(handle).doubles_rolled == 0;
+
+        for pos in PROP_POSITIONS.iter() {
+            let mut players = self.diff_players(handle).clone();
+
+            // Pay $100
+            players[curr_pindex].balance -= 100;
+            // Move to a property
+            players[curr_pindex].position = *pos;
+
+            // Add the new state to children
+            let mut new_state = StateDiff::new_with_parent(handle);
+            new_state.next_move = MoveType::Property;
+            new_state.set_branch_type(BranchType::Choice);
+            new_state.set_players(players);
+
+            if next_players_turn {
+                new_state.set_current_pindex(self.get_next_pindex(handle));
+            }
+
+            children.push(new_state);
+        }
+
+        // There's also the option to do nothing
+        let mut no_move = StateDiff::new_with_parent(handle);
+        no_move.next_move = MoveType::Roll;
+        no_move.set_branch_type(BranchType::Choice);
+
+        if next_players_turn {
+            no_move.set_current_pindex(self.get_next_pindex(handle));
+        }
+
+        children.push(no_move);
+
+        children
+    }
+
     /*********        CHOICEFUL CC STATE GENERATION        *********/
 
     /// Return child states that can be reached by getting a choiceful chance card.
@@ -349,7 +393,7 @@ impl Game {
         if children.len() > 0 {
             children
         } else {
-            self.new_state_from_cc(cc, handle)
+            vec![self.new_state_from_cc(cc, handle)]
         }
     }
 
