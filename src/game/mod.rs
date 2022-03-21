@@ -109,77 +109,60 @@ impl Game {
 
     /*********        STATE DIFF GETTERS        *********/
 
-    /// Return a vector of players playing the game at the specified state.
-    fn diff_players(&self, handle: usize) -> &Vec<Player> {
-        // Alias for the state in question
+    fn diff_field(&self, handle: usize, diff_id: u8) -> &FieldDiff {
+        // Alias for the state
         let s = &self.state_nodes[handle];
 
-        match s.get_diff_index(DIFF_ID_PLAYERS) {
-            Some(i) => match &s.diffs[i] {
-                FieldDiff::Players(p) => p,
-                _ => unreachable!(),
-            },
-            // Look for `players` in the parent state if this state doesn't contain it
-            None => self.diff_players(s.parent),
+        match s.get_diff_index(diff_id) {
+            Some(i) => &s.diffs[i],
+            None => self.diff_field(s.parent, diff_id),
+        }
+    }
+
+    /// Return a vector of players playing the game at the specified state.
+    fn diff_players(&self, handle: usize) -> &Vec<Player> {
+        match self.diff_field(handle, DIFF_ID_PLAYERS) {
+            FieldDiff::Players(x) => x,
+            _ => unreachable!(),
         }
     }
 
     /// Return the index of the player whose turn it currently is at the specified state.
     fn diff_current_pindex(&self, handle: usize) -> usize {
-        // Alias for the state in question
-        let s = &self.state_nodes[handle];
-
-        match s.get_diff_index(DIFF_ID_CURRENT_PLAYER) {
-            Some(i) => match s.diffs[i] {
-                FieldDiff::CurrentPlayer(p) => p,
-                _ => unreachable!(),
-            },
-            // Look for `current_players` in the parent state if this state doesn't contain it
-            None => self.diff_current_pindex(s.parent),
+        match self.diff_field(handle, DIFF_ID_CURRENT_PLAYER) {
+            FieldDiff::CurrentPlayer(x) => *x,
+            _ => unreachable!(),
         }
     }
 
     /// Return the properties that are owned by players at the specified state.
     fn diff_owned_properties(&self, handle: usize) -> &HashMap<u8, PropertyOwnership> {
-        // Alias for the state in question
-        let s = &self.state_nodes[handle];
-
-        match s.get_diff_index(DIFF_ID_OWNED_PROPERTIES) {
-            Some(i) => match &s.diffs[i] {
-                FieldDiff::OwnedProperties(p) => p,
-                _ => unreachable!(),
-            },
-            // Look for `owned_properties` in the parent state if this state doesn't contain it
-            None => self.diff_owned_properties(s.parent),
+        match self.diff_field(handle, DIFF_ID_OWNED_PROPERTIES) {
+            FieldDiff::OwnedProperties(x) => x,
+            _ => unreachable!(),
         }
     }
 
     /// Return a vector of chance cards that have already been seen from the specified state.
     fn diff_seen_ccs(&self, handle: usize) -> &Vec<ChanceCard> {
-        // Alias for the state in question
-        let s = &self.state_nodes[handle];
-
-        match s.get_diff_index(DIFF_ID_SEEN_CCS) {
-            Some(i) => match &s.diffs[i] {
-                FieldDiff::SeenCCs(p) => p,
-                _ => unreachable!(),
-            },
-            // Look for `seen_ccs` in the parent state if this state doesn't contain it
-            None => self.diff_seen_ccs(s.parent),
+        match self.diff_field(handle, DIFF_ID_SEEN_CCS) {
+            FieldDiff::SeenCCs(x) => x,
+            _ => unreachable!(),
         }
     }
     /// Return top_cc from the specified state.
     fn diff_top_cc(&self, handle: usize) -> usize {
-        // Alias for the state in question
-        let s = &self.state_nodes[handle];
+        match self.diff_field(handle, DIFF_ID_SEEN_CCS_HEAD) {
+            FieldDiff::SeenCCsHead(x) => *x,
+            _ => unreachable!(),
+        }
+    }
 
-        match s.get_diff_index(DIFF_ID_SEEN_CCS_HEAD) {
-            Some(i) => match s.diffs[i] {
-                FieldDiff::SeenCCsHead(p) => p,
-                _ => unreachable!(),
-            },
-            // Look for `seen_ccs_head` in the parent state if this state doesn't contain it
-            None => self.diff_top_cc(s.parent),
+    /// Return the specified state's `Level1Rent`.
+    fn diff_lvl_1_rent(&self, handle: usize) -> u8 {
+        match self.diff_field(handle, DIFF_ID_LEVEL_1_RENT) {
+            FieldDiff::Level1Rent(x) => *x,
+            _ => unreachable!(),
         }
     }
 
@@ -370,6 +353,20 @@ impl Game {
 
         children
     }
+
+    // /// Return child states that can be reached by landing on a property.
+    // fn gen_property_children(&self, handle: usize) -> Vec<StateDiff> {
+    //     let player_pos = self.get_current_player(handle).position;
+    //     let curr_pindex = self.diff_current_pindex(handle);
+    //     let lvl_1_rent = self.
+
+    //     if let Some(prop) = self.diff_owned_properties(handle).get(&player_pos) {
+    //         // The current player owes rent to the owner of this property
+    //         if prop.owner != curr_pindex {
+    //             let balance_due = i
+    //         }
+    //     }
+    // }
 
     /*********        CHOICEFUL CC STATE GENERATION        *********/
 
