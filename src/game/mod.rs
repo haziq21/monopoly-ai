@@ -107,6 +107,14 @@ impl Game {
         state
     }
 
+    /// Modify the state to be the next player's turn if the current player didn't roll doubles.
+    fn advance_move(&self, handle: usize, state: &mut StateDiff) {
+        if self.get_current_player(handle).doubles_rolled == 0 {
+            state.next_move = MoveType::Roll;
+            state.set_current_pindex(self.get_next_pindex(handle));
+        }
+    }
+
     /*********        STATE DIFF GETTERS        *********/
 
     fn diff_field(&self, handle: usize, diff_id: u8) -> &FieldDiff {
@@ -174,6 +182,7 @@ impl Game {
             MoveType::Roll => self.gen_roll_children(handle),
             MoveType::ChanceCard => self.gen_cc_children(handle),
             MoveType::ChoicefulCC(cc) => self.gen_choiceful_cc_children(handle, cc),
+            MoveType::Property => self.gen_property_children(handle),
             MoveType::Location => self.gen_location_children(handle),
             MoveType::Undefined => unreachable!(),
             _ => unimplemented!(),
@@ -316,8 +325,6 @@ impl Game {
     fn gen_location_children(&self, handle: usize) -> Vec<StateDiff> {
         let mut children = vec![];
         let curr_pindex = self.diff_current_pindex(handle);
-        // It's the next player's turn if the current player didn't roll doubles
-        let next_players_turn = self.get_current_player(handle).doubles_rolled == 0;
 
         for pos in PROP_POSITIONS.iter() {
             let mut players = self.diff_players(handle).clone();
@@ -332,41 +339,84 @@ impl Game {
             new_state.next_move = MoveType::Property;
             new_state.set_branch_type(BranchType::Choice);
             new_state.set_players(players);
-
-            if next_players_turn {
-                new_state.set_current_pindex(self.get_next_pindex(handle));
-            }
-
             children.push(new_state);
         }
 
         // There's also the option to do nothing
         let mut no_move = StateDiff::new_with_parent(handle);
-        no_move.next_move = MoveType::Roll;
+        self.advance_move(handle, &mut no_move);
         no_move.set_branch_type(BranchType::Choice);
-
-        if next_players_turn {
-            no_move.set_current_pindex(self.get_next_pindex(handle));
-        }
-
         children.push(no_move);
 
         children
     }
 
-    // /// Return child states that can be reached by landing on a property.
-    // fn gen_property_children(&self, handle: usize) -> Vec<StateDiff> {
-    //     let player_pos = self.get_current_player(handle).position;
-    //     let curr_pindex = self.diff_current_pindex(handle);
-    //     let lvl_1_rent = self.
+    /// Return child states that can be reached by landing on a property.
+    /// This assumes that the player is on a property tile.
+    fn gen_property_children(&self, handle: usize) -> Vec<StateDiff> {
+        let player_pos = self.get_current_player(handle).position;
+        let curr_pindex = self.diff_current_pindex(handle);
 
-    //     if let Some(prop) = self.diff_owned_properties(handle).get(&player_pos) {
-    //         // The current player owes rent to the owner of this property
-    //         if prop.owner != curr_pindex {
-    //             let balance_due = i
-    //         }
-    //     }
-    // }
+        // Check if the property at the player's location is owned
+        if let Some(prop) = self.diff_owned_properties(handle).get(&player_pos) {
+            // This state doesn't have a `BranchType` because it's a
+            // compound state (it's the second part of its parent state)
+            let mut new_state = StateDiff::new_with_parent(handle);
+
+            // The current player owes rent to the owner of this property
+            if prop.owner != curr_pindex {
+                let mut players = self.diff_players(handle).clone();
+                let new_rent_level = if self.diff_lvl_1_rent(handle) == 0 {
+                    prop.rent_level
+                } else {
+                    1
+                };
+                let balance_due = PROPERTIES[&player_pos].rents[new_rent_level - 1];
+
+                // Pay the owner using the current player's money
+                players[curr_pindex].balance -= balance_due;
+                players[prop.owner].balance += balance_due;
+                new_state.set_players(players);
+            }
+
+            // Raise the rent level
+            let mut props = self.diff_owned_properties(handle).clone();
+            props.get_mut(&player_pos).unwrap().raise_rent();
+            new_state.set_owned_properties(props);
+
+            // It's the next player's turn now
+            self.advance_move(handle, &mut new_state);
+
+            return vec![new_state];
+        } // At this point, the property isn't owned, so the player has to decide whether to buy or auction
+
+        // The state where the player buys the property
+        let mut buy_state = StateDiff::new_with_parent(handle);
+        buy_state.set_branch_type(BranchType::Choice);
+
+        // New players
+        let mut buy_state_players = self.diff_players(handle).clone();
+        buy_state_players[curr_pindex].balance -= PROPERTIES[&player_pos].price;
+        buy_state.set_players(buy_state_players);
+
+        // New owned properties
+        let mut buy_state_props = self.diff_owned_properties(handle).clone();
+        buy_state_props.insert(
+            player_pos,
+            PropertyOwnership {
+                owner: curr_pindex,
+                rent_level: 1,
+            },
+        );
+        buy_state.set_owned_properties(buy_state_props);
+
+        // The state where the player auctions the property
+        let mut auction_state = StateDiff::new_with_parent(handle);
+        auction_state.set_branch_type(BranchType::Choice);
+        auction_state.next_move = MoveType::Auction;
+
+        vec![buy_state, auction_state]
+    }
 
     /*********        CHOICEFUL CC STATE GENERATION        *********/
 
