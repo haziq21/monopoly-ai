@@ -175,7 +175,7 @@ impl Player {
     /// Send the player to jail.
     pub fn send_to_jail(&mut self) {
         // Set the player's position to jail
-        self.position = 9;
+        self.position = JAIL_POSITION;
         self.in_jail = true;
 
         // Reset the doubles counter
