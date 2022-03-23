@@ -111,16 +111,16 @@ pub struct Property {
     /// The color set that the property belongs to.
     pub color: Color,
     /// The price of the property.
-    pub price: u16,
+    pub price: i32,
     /// The rent amount for each rent level of the property.
     /// `rents[0]` would be the rent amount for rent level 1,
     /// and `rents[4]` would be that of rent level 5.
-    pub rents: [u16; 5],
+    pub rents: [i32; 5],
 }
 
 impl Property {
     /// Creates a new property.
-    pub fn new(color: Color, price: u16, rents: [u16; 5]) -> Property {
+    pub fn new(color: Color, price: i32, rents: [i32; 5]) -> Property {
         Property {
             color,
             price,

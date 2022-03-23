@@ -33,7 +33,7 @@ pub struct PropertyOwnership {
     pub owner: usize,
     /// The rent level of this property.
     /// Rent level starts at 1 and caps out at 5.
-    pub rent_level: u8,
+    pub rent_level: usize,
 }
 
 impl PropertyOwnership {
@@ -74,6 +74,7 @@ pub enum MoveType {
     Undefined,
     Roll,
     Property,
+    Auction,
     Location,
     ChanceCard,
     ChoicefulCC(ChanceCard),
