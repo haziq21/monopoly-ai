@@ -13,17 +13,6 @@ pub enum BranchType {
     Choice,
 }
 
-impl BranchType {
-    /// Return the associated value if `self` is
-    /// a `BranchType::Chance`, and panic otherwise.
-    pub fn probability(&self) -> f64 {
-        match self {
-            BranchType::Chance(p) => *p,
-            _ => unreachable!(),
-        }
-    }
-}
-
 /*********        PROPERTY OWNERSHIP        *********/
 
 #[derive(Copy, Clone, Debug)]
