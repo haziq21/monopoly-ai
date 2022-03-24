@@ -7,7 +7,7 @@ mod agent;
 pub use agent::Agent;
 
 mod state_diff;
-use state_diff::{BranchType, FieldDiff, MoveType, PropertyOwnership, StateDiff};
+use state_diff::{diff_message, BranchType, FieldDiff, MoveType, PropertyOwnership, StateDiff};
 
 /// A simulation of Monopoly.
 pub struct Game {
@@ -42,6 +42,11 @@ impl Game {
     pub fn play(mut agents: Vec<Agent>) {
         let mut game = Game::new(agents.len());
         game.gen_children_save(game.root_handle);
+        game.gen_children_save(game.nodes[game.root_handle].children[0]);
+
+        for n in &game.nodes {
+            println!("{}", n.message)
+        }
 
         let agent_choice = agents[0].make_choice(&mut game);
         game.set_root_state(agent_choice);
@@ -300,6 +305,7 @@ impl Game {
                     players[i].balance -= 100;
                 }
 
+                diff.message = diff_message::roll(players[i].position);
                 // Set the next move
                 diff.next_move = MoveType::when_landed_on(players[i].position);
                 // Set the players diff
@@ -328,6 +334,7 @@ impl Game {
                 // Check if the player landed on 'go to jail'
                 if players[i].position == GO_TO_JAIL_POSITION {
                     players[i].send_to_jail();
+                    state.message = diff_message::roll_to_jail();
                 }
                 // Check if this roll got doubles
                 else if roll.is_double {
@@ -337,10 +344,14 @@ impl Game {
                     // Go to jail after three consecutive doubles
                     if players[i].doubles_rolled == 3 {
                         players[i].send_to_jail();
+                        state.message = diff_message::roll_to_jail();
+                    } else {
+                        state.message = diff_message::roll_doubles(players[i].position);
                     }
                 } else {
                     // Reset the doubles counter
                     players[i].doubles_rolled = 0;
+                    state.message = diff_message::roll(players[i].position);
                 }
 
                 // Set the next move
