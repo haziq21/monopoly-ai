@@ -260,3 +260,18 @@ impl StateDiff {
         self.set_diff(DIFF_ID_LEVEL_1_RENT, FieldDiff::Level1Rent(rent));
     }
 }
+
+/// A collection of functions that return `StateDiff` messages.
+pub mod diff_message {
+    pub fn roll_to_jail() -> String {
+        "roll to jail".to_string()
+    }
+
+    pub fn roll_doubles(to_pos: u8) -> String {
+        format!("roll to {} (doubles)", to_pos)
+    }
+
+    pub fn roll(to_pos: u8) -> String {
+        format!("roll to {}", to_pos)
+    }
+}
