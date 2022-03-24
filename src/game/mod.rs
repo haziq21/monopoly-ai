@@ -11,8 +11,8 @@ use state_diff::{BranchType, FieldDiff, MoveType, PropertyOwnership, StateDiff};
 
 /// A simulation of Monopoly.
 pub struct Game {
-    /// Agents playing the game.
-    agents: Vec<Agent>,
+    /// Number of players playing the game.
+    player_count: usize,
     /// The moves taken by players in terms of the indexes of the children.
     move_history: Vec<usize>,
     /// The current game state, as well as all its decendants.
@@ -28,10 +28,9 @@ impl Game {
     /*********       PUBLIC INTERFACES        *********/
 
     /// Return a new game.
-    pub fn new(agents: Vec<Agent>) -> Self {
-        let player_count = agents.len();
+    pub fn new(player_count: usize) -> Self {
         Self {
-            agents,
+            player_count,
             move_history: vec![],
             state_nodes: vec![StateDiff::new_root(player_count)],
             dirty_handles: vec![],
@@ -40,29 +39,16 @@ impl Game {
     }
 
     /// Play the game until it ends.
-    pub fn play(&mut self) {
-        for state in self.gen_children(self.current_handle) {
-            let handle = self.append_state(state);
-            self.gen_children(handle);
-        }
+    pub fn play(mut agents: Vec<Agent>) {
+        let mut game = Game::new(agents.len());
+        game.gen_children_save(game.current_handle);
+
+        let agent_choice = agents[0].make_choice(&mut game);
+        game.set_root_state(agent_choice);
+        println!("{}", agent_choice);
     }
 
     /*********        HELPERS        *********/
-
-    /// Return the player whose turn it currently is at the specified state.
-    fn get_current_player(&self, handle: usize) -> &Player {
-        &self.diff_players(handle)[self.diff_current_pindex(handle)]
-    }
-
-    /// Return the index of the player whose turn it will be next.
-    fn get_next_pindex(&self, handle: usize) -> usize {
-        (self.diff_current_pindex(handle) + 1) % self.agents.len()
-    }
-
-    /// Return the next value of `top_cc`.
-    fn get_next_top_cc(&self, handle: usize) -> usize {
-        (self.diff_top_cc(handle) + 1) % TOTAL_CHANCE_CARDS
-    }
 
     /// Push the new state node to `self.state_nodes` and return its handle.
     fn append_state(&mut self, state: StateDiff) -> usize {
@@ -83,6 +69,55 @@ impl Game {
         self.state_nodes[parent].children.push(i);
 
         i
+    }
+
+    /// Generate and append children
+    fn gen_children_save(&mut self, handle: usize) {
+        for child in self.gen_children(handle) {
+            self.append_state(child);
+        }
+    }
+
+    /// Set the root state to be one of the existing root state's children.
+    /// `child_index` is not a regular handle, but the index of the target
+    /// state in the current root node's `children` vec.
+    fn set_root_state(&mut self, child_index: usize) {
+        let new_handle = self.state_nodes[self.current_handle]
+            .children
+            .swap_remove(child_index);
+
+        // Mark the old handle and all of the new handle's siblings as 'dirty'
+        self.dirty_handles.push(self.current_handle);
+        for h in self.state_nodes[self.current_handle].children.clone() {
+            self.mark_dirty(h);
+        }
+
+        self.current_handle = new_handle;
+    }
+
+    /// Mark a state and all of its descendants as 'dirty'.
+    fn mark_dirty(&mut self, handle: usize) {
+        self.dirty_handles.push(handle);
+
+        // Mark all the descendants as 'dirty'
+        for h in self.state_nodes[handle].children.clone() {
+            self.mark_dirty(h);
+        }
+    }
+
+    /// Return the player whose turn it currently is at the specified state.
+    fn get_current_player(&self, handle: usize) -> &Player {
+        &self.diff_players(handle)[self.diff_current_pindex(handle)]
+    }
+
+    /// Return the index of the player whose turn it will be next.
+    fn get_next_pindex(&self, handle: usize) -> usize {
+        (self.diff_current_pindex(handle) + 1) % self.player_count
+    }
+
+    /// Return the next value of `top_cc`.
+    fn get_next_top_cc(&self, handle: usize) -> usize {
+        (self.diff_top_cc(handle) + 1) % TOTAL_CHANCE_CARDS
     }
 
     /// Return a `StateDiff` with the boilerplate for chance cards:
@@ -136,9 +171,8 @@ impl Game {
             |pos: f64| ((balance - 20) as f64 * pos / 20.0).round() as i32 * 20 + 20;
 
         if balance <= 20 {
-            // By right, this line should never run because this
-            // case is already caught in `get_auction_winner_chances()`
-            return vec![];
+            // Just in case...
+            panic!("get_winning_bid_chances() received players with < $20");
         }
 
         // Based on a bell curve
@@ -666,7 +700,7 @@ impl Game {
         let mut children = vec![];
         let curr_pindex = self.diff_current_pindex(handle);
 
-        for i in 0..self.agents.len() {
+        for i in 0..self.player_count {
             // Skip the current player
             if i == curr_pindex {
                 continue;
@@ -729,7 +763,7 @@ impl Game {
         let mut children = vec![];
         let curr_pindex = self.diff_current_pindex(handle);
 
-        for i in 0..self.agents.len() {
+        for i in 0..self.player_count {
             // Skip the current player
             if i == curr_pindex {
                 continue;
@@ -824,7 +858,7 @@ impl Game {
         let mut state = self.new_state_from_cc(ChanceCard::Level1Rent, handle);
         state.set_branch_type(BranchType::Chance(probability));
         // Set the diff to 2 rounds (player_count * 2 turns per player)
-        state.set_level_1_rent(self.agents.len() as u8 * 2);
+        state.set_level_1_rent(self.player_count as u8 * 2);
 
         state
     }
