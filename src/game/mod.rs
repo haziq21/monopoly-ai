@@ -69,15 +69,21 @@ impl Game {
 
     /// Push the new state node to `self.state_nodes` and return its handle.
     fn append_state(&mut self, state: StateDiff) -> usize {
-        // TODO: Update parent state's children vector
+        let i;
+        let parent = state.parent;
+
         if self.dirty_handles.len() == 0 {
+            // Simply append the new state to the tree
             self.state_nodes.push(state);
-            return self.state_nodes.len() - 1;
+            i = self.state_nodes.len() - 1;
+        } else {
+            // Replace the last dirty state with the new state
+            i = self.dirty_handles.pop();
+            self.state_nodes[i] = state;
         }
 
-        let i = self.dirty_handles[0];
-        self.state_nodes[i] = state;
-        self.dirty_handles.swap_remove(0);
+        // Update parent state's children vector
+        self.state_nodes[parent].children.push(i);
 
         i
     }
