@@ -133,6 +133,8 @@ pub struct StateDiff {
     /// The type of move to be made after a state.
     /// This is not in `diffs` as it changes every move.
     pub next_move: MoveType,
+    /// A message denoting what changed in this `StateDiff`.
+    pub message: String,
 }
 
 impl StateDiff {
@@ -146,6 +148,7 @@ impl StateDiff {
             parent,
             children: vec![],
             next_move: MoveType::Undefined,
+            message: String::new(),
         }
     }
 
@@ -165,6 +168,7 @@ impl StateDiff {
             parent: 0,
             children: vec![],
             next_move: MoveType::Roll,
+            message: String::new(),
         }
     }
 
