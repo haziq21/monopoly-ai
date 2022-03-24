@@ -1,6 +1,3 @@
-// TODO: Optimise chance card branches.
-// TODO: Add cc to seen_ccs in cc state generation fns
-
 use std::collections::HashMap;
 
 mod globals;
@@ -78,7 +75,7 @@ impl Game {
             i = self.state_nodes.len() - 1;
         } else {
             // Replace the last dirty state with the new state
-            i = self.dirty_handles.pop();
+            i = self.dirty_handles.pop().unwrap();
             self.state_nodes[i] = state;
         }
 
