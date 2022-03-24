@@ -1,5 +1,5 @@
-// TODO: Update `StateDiff`'s current_player everywhere it's needed.
 // TODO: Optimise chance card branches.
+// TODO: Add cc to seen_ccs in cc state generation fns
 
 use std::collections::HashMap;
 
@@ -108,11 +108,57 @@ impl Game {
     }
 
     /// Modify the state to be the next player's turn if the current player didn't roll doubles.
+    /// This only affects the state's next_move and current_pindex
     fn advance_move(&self, handle: usize, state: &mut StateDiff) {
         if self.get_current_player(handle).doubles_rolled == 0 {
             state.next_move = MoveType::Roll;
             state.set_current_pindex(self.get_next_pindex(handle));
         }
+    }
+
+    fn get_auction_winner_chances(&self, handle: usize) -> Vec<(usize, f64)> {
+        let balances = self
+            .diff_players(handle)
+            .iter()
+            .filter(|p| p.balance > 20)
+            .map(|p| p.balance as f64);
+        let total_balance: f64 = balances.clone().sum();
+
+        balances.map(|b| b / total_balance).enumerate().collect()
+    }
+
+    fn get_winning_bid_chances(&self, handle: usize, winner: usize) -> Vec<(i32, f64)> {
+        let balance = self.diff_players(handle)[winner].balance;
+        let balance_at_pos =
+            |pos: f64| ((balance - 20) as f64 * pos / 20.0).round() as i32 * 20 + 20;
+
+        if balance <= 20 {
+            // By right, this line should never run because this
+            // case is already caught in `get_auction_winner_chances()`
+            return vec![];
+        }
+
+        // Based on a bell curve
+        [
+            (100. / 6. * 1., 6.75),
+            (100. / 6. * 2., 24.1),
+            (100. / 6. * 3., 38.3),
+            (100. / 6. * 4., 24.1),
+            (100. / 6. * 5., 6.75),
+        ]
+        .iter()
+        .map(|(pos, chance)| (balance_at_pos(*pos), *chance))
+        .fold(vec![], |mut acc, (p, c)| {
+            if let Some(last) = acc.last_mut() {
+                if p == last.0 {
+                    last.1 += c;
+                    return acc;
+                }
+            }
+
+            acc.push((p, c));
+            acc
+        })
     }
 
     /*********        STATE DIFF GETTERS        *********/
@@ -183,9 +229,9 @@ impl Game {
             MoveType::ChanceCard => self.gen_cc_children(handle),
             MoveType::ChoicefulCC(cc) => self.gen_choiceful_cc_children(handle, cc),
             MoveType::Property => self.gen_property_children(handle),
+            MoveType::Auction => self.gen_auction_children(handle),
             MoveType::Location => self.gen_location_children(handle),
             MoveType::Undefined => unreachable!(),
-            _ => unimplemented!(),
         }
     }
 
@@ -352,7 +398,7 @@ impl Game {
     }
 
     /// Return child states that can be reached by landing on a property.
-    /// This assumes that the player is on a property tile.
+    /// This assumes that the current player is on a property tile.
     fn gen_property_children(&self, handle: usize) -> Vec<StateDiff> {
         let player_pos = self.get_current_player(handle).position;
         let curr_pindex = self.diff_current_pindex(handle);
@@ -384,7 +430,7 @@ impl Game {
             props.get_mut(&player_pos).unwrap().raise_rent();
             new_state.set_owned_properties(props);
 
-            // It's the next player's turn now
+            // It's the next turn now
             self.advance_move(handle, &mut new_state);
 
             return vec![new_state];
@@ -416,6 +462,45 @@ impl Game {
         auction_state.next_move = MoveType::Auction;
 
         vec![buy_state, auction_state]
+    }
+
+    /// Return child states that can be reached by auctioning a property.
+    /// This assumes that the current player is on a property tile.
+    fn gen_auction_children(&self, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+
+        // Loop through all the possible auction winners and winning bids
+        for (auction_winner, player_chance) in self.get_auction_winner_chances(handle) {
+            for (winning_bid, bid_chance) in self.get_winning_bid_chances(handle, auction_winner) {
+                let mut players = self.diff_players(handle).clone();
+                let mut props = self.diff_owned_properties(handle).clone();
+                let mut new_state = StateDiff::new_with_parent(handle);
+
+                // It's the current player who is on the property that is being auctioned,
+                // so we use their position instead of the position of the player who won the auction
+                let prop_pos = players[self.diff_current_pindex(handle)].position;
+
+                // The auction winner pays the bid...
+                players[auction_winner].balance -= winning_bid;
+                // ...to get the property
+                props.insert(
+                    prop_pos,
+                    PropertyOwnership {
+                        owner: auction_winner,
+                        rent_level: 1,
+                    },
+                );
+
+                new_state.set_players(players);
+                new_state.set_owned_properties(props);
+                new_state.set_branch_type(BranchType::Chance(player_chance * bid_chance));
+
+                self.advance_move(handle, &mut new_state);
+                children.push(new_state);
+            }
+        }
+
+        children
     }
 
     /*********        CHOICEFUL CC STATE GENERATION        *********/
