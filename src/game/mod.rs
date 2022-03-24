@@ -16,12 +16,12 @@ pub struct Game {
     /// The moves taken by players in terms of the indexes of the children.
     move_history: Vec<usize>,
     /// The current game state, as well as all its decendants.
-    state_nodes: Vec<StateDiff>,
+    nodes: Vec<StateDiff>,
     /// Indexes of states that have been marked for deletion.
     /// These states can be safely replaced by newer states.
     dirty_handles: Vec<usize>,
     /// The index of the state the game is currently at.
-    current_handle: usize,
+    root_handle: usize,
 }
 
 impl Game {
@@ -32,16 +32,16 @@ impl Game {
         Self {
             player_count,
             move_history: vec![],
-            state_nodes: vec![StateDiff::new_root(player_count)],
+            nodes: vec![StateDiff::new_root(player_count)],
             dirty_handles: vec![],
-            current_handle: 0,
+            root_handle: 0,
         }
     }
 
     /// Play the game until it ends.
     pub fn play(mut agents: Vec<Agent>) {
         let mut game = Game::new(agents.len());
-        game.gen_children_save(game.current_handle);
+        game.gen_children_save(game.root_handle);
 
         let agent_choice = agents[0].make_choice(&mut game);
         game.set_root_state(agent_choice);
@@ -57,21 +57,21 @@ impl Game {
 
         if self.dirty_handles.len() == 0 {
             // Simply append the new state to the tree
-            self.state_nodes.push(state);
-            i = self.state_nodes.len() - 1;
+            self.nodes.push(state);
+            i = self.nodes.len() - 1;
         } else {
             // Replace the last dirty state with the new state
             i = self.dirty_handles.pop().unwrap();
-            self.state_nodes[i] = state;
+            self.nodes[i] = state;
         }
 
         // Update parent state's children vector
-        self.state_nodes[parent].children.push(i);
+        self.nodes[parent].children.push(i);
 
         i
     }
 
-    /// Generate and append children
+    /// Generate and append children.
     fn gen_children_save(&mut self, handle: usize) {
         for child in self.gen_children(handle) {
             self.append_state(child);
@@ -82,17 +82,17 @@ impl Game {
     /// `child_index` is not a regular handle, but the index of the target
     /// state in the current root node's `children` vec.
     fn set_root_state(&mut self, child_index: usize) {
-        let new_handle = self.state_nodes[self.current_handle]
+        let new_handle = self.nodes[self.root_handle]
             .children
             .swap_remove(child_index);
 
         // Mark the old handle and all of the new handle's siblings as 'dirty'
-        self.dirty_handles.push(self.current_handle);
-        for h in self.state_nodes[self.current_handle].children.clone() {
+        self.dirty_handles.push(self.root_handle);
+        for h in self.nodes[self.root_handle].children.clone() {
             self.mark_dirty(h);
         }
 
-        self.current_handle = new_handle;
+        self.root_handle = new_handle;
     }
 
     /// Mark a state and all of its descendants as 'dirty'.
@@ -100,7 +100,7 @@ impl Game {
         self.dirty_handles.push(handle);
 
         // Mark all the descendants as 'dirty'
-        for h in self.state_nodes[handle].children.clone() {
+        for h in self.nodes[handle].children.clone() {
             self.mark_dirty(h);
         }
     }
@@ -202,7 +202,7 @@ impl Game {
 
     fn diff_field(&self, handle: usize, diff_id: u8) -> &FieldDiff {
         // Alias for the state
-        let s = &self.state_nodes[handle];
+        let s = &self.nodes[handle];
 
         match s.get_diff_index(diff_id) {
             Some(i) => &s.diffs[i],
@@ -261,7 +261,7 @@ impl Game {
 
     /// Return child states that can be reached from the specified state.
     fn gen_children(&self, handle: usize) -> Vec<StateDiff> {
-        match self.state_nodes[handle].next_move {
+        match self.nodes[handle].next_move {
             MoveType::Roll => self.gen_roll_children(handle),
             MoveType::ChanceCard => self.gen_cc_children(handle),
             MoveType::ChoicefulCC(cc) => self.gen_choiceful_cc_children(handle, cc),
