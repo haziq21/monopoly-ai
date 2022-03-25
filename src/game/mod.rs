@@ -215,6 +215,10 @@ impl Game {
         })
     }
 
+    fn is_terminal(&self, handle: usize) -> bool {
+        self.diff_players(handle).iter().any(|p| p.balance <= 0)
+    }
+
     /*********        STATE DIFF GETTERS        *********/
 
     fn diff_field(&self, handle: usize, diff_id: DiffID) -> &FieldDiff {
