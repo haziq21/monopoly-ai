@@ -80,8 +80,10 @@ impl Game {
 
     /// Generate and append children.
     fn gen_children_save(&mut self, handle: usize) {
-        for child in self.gen_children(handle) {
-            self.append_state(child);
+        if self.nodes[handle].children.len() == 0 {
+            for child in self.gen_children(handle) {
+                self.append_state(child);
+            }
         }
     }
 
@@ -108,7 +110,8 @@ impl Game {
 
         self.root_handle = new_handle;
 
-        // This state doesn't have a parent anymore
+        // Set itself as its parent to ensure that there are
+        // no more references to deleted nodes (just in case)
         self.nodes[new_handle].parent = new_handle;
     }
 
