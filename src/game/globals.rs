@@ -195,6 +195,7 @@ impl std::fmt::Display for Player {
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum DiffID {
     Level1Rent = 1,
     SeenCcsHead,
