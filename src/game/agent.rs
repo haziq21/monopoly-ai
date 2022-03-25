@@ -1,21 +1,26 @@
-// REMOVE ME WHEN RE-IMPLEMENTING AGENT LOGIC
-#![allow(dead_code, unused_imports, unused_variables)]
-use super::StateDiff;
+use super::globals::DiffID;
+use super::Game;
 use rand::Rng;
 use std::time::{Duration, Instant};
 
+use super::state_diff::{BranchType, FieldDiff};
+
+/// An MTCS tree is essentially a mirror copy of the game tree,
+/// except with property + auction states combined into one node.
 pub struct MCTreeNode {
     total_value: f64,
     num_visits: u32,
+    branch_type: BranchType,
     children: Vec<Box<MCTreeNode>>,
 }
 
 impl MCTreeNode {
     /// Return a new MCTS node with `t` and `n` set to 0.
-    fn new() -> MCTreeNode {
+    fn new(branch_type: BranchType) -> MCTreeNode {
         MCTreeNode {
             total_value: 0.,
             num_visits: 0,
+            branch_type,
             children: vec![],
         }
     }
@@ -39,113 +44,174 @@ impl MCTreeNode {
             .unwrap()
     }
 
-    // /// Generate as many direct child nodes as needed to mirror `state`'s
-    // /// direct children. This should only be called when this MCTS node
-    // /// has no children, or has the same amount of children as `state`.
-    // fn sync_children_count(&mut self, state: &StateDiff) {
-    //     let mctree_children_count = self.children.len();
-    //     let state_children_count = state.children.len();
+    /// Generate as many direct child nodes as needed to mirror `state`'s
+    /// direct children. This should only be called when this MCTS node
+    /// has no children, or has the same amount of children as `state`.
+    fn sync_children_count(&mut self, game: &mut Game, handle: usize) {
+        let mctree_children_count = self.children.len();
+        let count = game.nodes[handle].children.len();
 
-    //     if mctree_children_count == state_children_count {
-    //         return;
-    //     }
+        if mctree_children_count == count {
+            return;
+        }
 
-    //     if mctree_children_count != 0 {
-    //         panic!(
-    //             "MCTreeNode::sync_children_count() - mctree_children_count == {}",
-    //             mctree_children_count
-    //         );
-    //     }
+        if mctree_children_count != 0 {
+            panic!(
+                "MCTreeNode::sync_children_count() - mctree_children_count == {}",
+                mctree_children_count
+            );
+        }
 
-    //     for _ in &state.children {
-    //         self.children.push(Box::new(MCTreeNode::new()))
-    //     }
-    // }
+        for i in 0..count {
+            let bt = game
+                .diff_branch_type(game.nodes[handle].children[i])
+                .clone();
+            self.children.push(Box::new(MCTreeNode::new(bt)));
+        }
+    }
 
-    // /// Traverse the tree according to the indexes in `walk`.
-    // /// Replace this node with the node at the end of the traversal.
-    // fn sync_with_walk(&mut self, walk: &[usize]) {
-    //     for &step in walk {
-    //         if self.children.len() == 0 {
-    //             *self = MCTreeNode::new();
-    //             break;
-    //         }
+    /// Traverse the tree according to the indexes in `walk`.
+    /// Replace this node with the node at the end of the traversal.
+    fn sync_with_walk(&mut self, game: &mut Game, latest_unseen_move: usize) {
+        for &step in &game.move_history[latest_unseen_move..] {
+            if self.children.len() == 0 {
+                let ending_node = &game.nodes[game.root_handle];
+                let diff_index = ending_node.get_diff_index(DiffID::BranchType).unwrap();
+                let branch_type = match ending_node.diffs[diff_index] {
+                    FieldDiff::BranchType(bt) => bt,
+                    _ => unreachable!(),
+                };
 
-    //         *self = std::mem::replace(self.children[step].as_mut(), MCTreeNode::new());
-    //     }
-    // }
+                *self = MCTreeNode::new(branch_type);
+                break;
+            }
 
-    // /// Traverse the MCTS tree and create child nodes as needed. Return rollout result.
-    // fn traverse(
-    //     &mut self,
-    //     state_node: &mut StateDiff,
-    //     agent_index: usize,
-    //     temperature: f64,
-    // ) -> f64 {
-    //     // If `self` is not a leaf node, calculate the UCB1 values of its child nodes
-    //     if self.children.len() > 0 {
-    //         // The UCB1 formula is `V_i + C * sqrt( ln(N) / n_i )`
+            *self = std::mem::replace(
+                self.children[step].as_mut(),
+                MCTreeNode::new(BranchType::Choice),
+            );
+        }
+    }
 
-    //         // mean_value = V_i
-    //         let mean_value = self.total_value as f64 / self.num_visits as f64;
+    /// Traverse the MCTS tree and create child nodes as needed. Return rollout result.
+    fn traverse(
+        &mut self,
+        game: &mut Game,
+        node_handle: usize,
+        agent_index: usize,
+        temperature: f64,
+    ) -> f64 {
+        let value_multiplier = match self.branch_type {
+            BranchType::Chance(p) => p,
+            _ => 1.,
+        };
 
-    //         // All the UCB1 values of `self`'s children
-    //         let ucb1_values: Vec<f64> = self
-    //             .children
-    //             .iter()
-    //             .map(|s| {
-    //                 if self.num_visits == 0 || s.num_visits == 0 {
-    //                     f64::INFINITY
-    //                 } else {
-    //                     mean_value
-    //                         + temperature
-    //                             * ((self.num_visits as f64).ln() / s.num_visits as f64).sqrt()
-    //                 }
-    //             })
-    //             .collect();
+        // If `self` is not a leaf node, calculate the UCB1 values of its child nodes
+        if self.children.len() > 0 {
+            // The UCB1 formula is `V_i + C * sqrt( ln(N) / n_i )`
 
-    //         // The index of the child to traverse next
-    //         let child_index = ucb1_values
-    //             .iter()
-    //             .enumerate()
-    //             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-    //             .map(|(i, _)| i)
-    //             .unwrap();
+            // mean_value = V_i
+            let mean_value = self.total_value as f64 / self.num_visits as f64;
 
-    //         // Value of the rollout to propagate
-    //         let propagated_value = self.children[child_index].traverse(
-    //             &mut state_node.children[child_index],
-    //             agent_index,
-    //             temperature,
-    //         );
+            // All the UCB1 values of `self`'s children
+            let ucb1_values: Vec<f64> = self
+                .children
+                .iter()
+                .map(|s| {
+                    if self.num_visits == 0 || s.num_visits == 0 {
+                        f64::INFINITY
+                    } else {
+                        mean_value
+                            + temperature
+                                * ((self.num_visits as f64).ln() / s.num_visits as f64).sqrt()
+                    }
+                })
+                .collect();
 
-    //         // Update n and t
-    //         self.num_visits += 1;
-    //         self.total_value += propagated_value;
+            // The index of the child to traverse next
+            let child_index = ucb1_values
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .map(|(i, _)| i)
+                .unwrap();
 
-    //         return propagated_value;
-    //     }
+            let next_handle = game.nodes[node_handle].children[child_index];
 
-    //     // Perform a rollout if the node has never been visited before
-    //     if self.num_visits == 0 {
-    //         let rollout_outcome = state_node.rollout(agent_index);
+            // Value of the rollout to propagate
+            let propagated_value =
+                self.children[child_index].traverse(game, next_handle, agent_index, temperature);
 
-    //         // Update n and t
-    //         self.num_visits += 1;
-    //         self.total_value += rollout_outcome;
+            // Update n and t
+            self.num_visits += 1;
+            self.total_value += propagated_value * value_multiplier;
 
-    //         return rollout_outcome;
-    //     }
+            return propagated_value;
+        }
 
-    //     // Expand the tree and rollout from the first child if
-    //     // the node is a leaf node that hasn't been visited yet
-    //     state_node.generate_children();
+        // Perform a rollout if the node has never been visited before
+        if self.num_visits == 0 {
+            let rollout_outcome = MCTreeNode::rollout(game, node_handle, agent_index);
 
-    //     // Sync the MCTS tree with the game-state tree
-    //     self.sync_children_count(state_node);
+            // Update n and t
+            self.num_visits += 1;
+            self.total_value += rollout_outcome * value_multiplier;
 
-    //     state_node.children[0].rollout(agent_index)
-    // }
+            return rollout_outcome;
+        }
+
+        // Expand the tree and rollout from the first child if
+        // the node is a leaf node that hasn't been visited yet
+        game.gen_children_save(node_handle);
+
+        // Sync the MCTS tree with the game-state tree
+        self.sync_children_count(game, node_handle);
+
+        MCTreeNode::rollout(game, game.nodes[node_handle].children[0], agent_index)
+            * value_multiplier
+    }
+
+    fn rollout(game: &mut Game, mut handle: usize, agent_index: usize) -> f64 {
+        let mut rng = rand::thread_rng();
+
+        // Play the game randomly until game-over
+        while !game.is_terminal(handle) {
+            game.gen_children_save(handle);
+            match game.diff_branch_type(game.nodes[handle].children[0]) {
+                BranchType::Chance(_) => {
+                    let chances = game.get_children_chances(handle);
+                    let mut pos: f64 = rng.gen();
+                    let mut target_handle_found = false;
+
+                    for (i, &c) in chances.iter().enumerate() {
+                        if pos <= c {
+                            handle = game.nodes[handle].children[i];
+                            target_handle_found = true;
+                            break;
+                        }
+
+                        pos -= c;
+                    }
+
+                    // Just in case of floating-point arithmetic inacuraccies
+                    if !target_handle_found {
+                        handle = *game.nodes[handle].children.last().unwrap();
+                    }
+                }
+                BranchType::Choice => handle = rng.gen_range(0..game.nodes[handle].children.len()),
+            }
+        }
+
+        let total_balance: i32 = game
+            .diff_players(handle)
+            .iter()
+            .map(|p| p.balance.max(0))
+            .sum();
+
+        let agent_balance = game.diff_players(handle)[agent_index].balance.max(0);
+
+        agent_balance as f64 / total_balance as f64
+    }
 }
 
 /// An agent playing the game, or the "brains" of a player.
@@ -179,7 +245,7 @@ impl Agent {
             temperature,
             index,
             latest_unseen_move: 0,
-            mcts_tree: MCTreeNode::new(),
+            mcts_tree: MCTreeNode::new(BranchType::Choice),
         }
     }
 
@@ -194,64 +260,61 @@ impl Agent {
     }
 
     /// Choose a child of `from_node` to move to. Return the index of that child.
-    pub fn make_choice(&mut self, from_node: &mut StateDiff, move_history: &Vec<usize>) -> usize {
-        // match self {
-        //     Agent::Ai { .. } => self.ai_choice(from_node, move_history),
-        //     Agent::Human => self.human_choice(from_node),
-        //     Agent::Random => self.random_choice(from_node),
-        // }
-
-        0
+    pub fn make_choice(&mut self, game: &mut Game) -> usize {
+        match self {
+            Agent::Ai { .. } => self.ai_choice(game),
+            Agent::Human => self.human_choice(game),
+            Agent::Random => self.random_choice(game),
+        }
     }
 
     /*********        PLAYER LOGIC        *********/
 
-    // fn ai_choice(&mut self, state_node: &mut StateDiff, move_history: &Vec<usize>) -> usize {
-    //     let start_time = Instant::now();
+    fn ai_choice(&mut self, game: &mut Game) -> usize {
+        let start_time = Instant::now();
 
-    //     // Extract relevant fields from agent
-    //     let (max_time, temperature, agent_index, latest_unseen_move, mcts_node) = match self {
-    //         Agent::Ai {
-    //             time_limit,
-    //             temperature,
-    //             index,
-    //             latest_unseen_move,
-    //             mcts_tree,
-    //         } => (
-    //             Duration::from_millis(*time_limit),
-    //             *temperature,
-    //             *index,
-    //             latest_unseen_move,
-    //             mcts_tree,
-    //         ),
-    //         _ => unreachable!(),
-    //     };
+        // Extract relevant fields from agent
+        let (max_time, temperature, agent_index, latest_unseen_move, mcts_node) = match self {
+            Agent::Ai {
+                time_limit,
+                temperature,
+                index,
+                latest_unseen_move,
+                mcts_tree,
+            } => (
+                Duration::from_millis(*time_limit),
+                *temperature,
+                *index,
+                latest_unseen_move,
+                mcts_tree,
+            ),
+            _ => unreachable!(),
+        };
 
-    //     // Update mcts_node to reflect the current game state
-    //     mcts_node.sync_with_walk(&move_history[*latest_unseen_move..]);
-    //     // Set the lastest unseen move to the move after this one
-    //     *latest_unseen_move = move_history.len() + 1;
+        // Update mcts_node to reflect the current game state
+        mcts_node.sync_with_walk(game, *latest_unseen_move);
+        // Set the lastest unseen move to the move after this one
+        *latest_unseen_move = game.move_history.len() + 1;
 
-    //     // Ensure `mcts_node` has all of its direct children
-    //     state_node.generate_children();
-    //     mcts_node.sync_children_count(state_node);
+        // Ensure `mcts_node` has all of its direct children
+        game.gen_children_save(game.root_handle);
+        mcts_node.sync_children_count(game, game.root_handle);
 
-    //     // Continue searching until time is up
-    //     while start_time.elapsed() < max_time {
-    //         mcts_node.traverse(state_node, agent_index, temperature);
-    //     }
+        // Continue searching until time is up
+        while start_time.elapsed() < max_time {
+            mcts_node.traverse(game, game.root_handle, agent_index, temperature);
+        }
 
-    //     mcts_node.get_best_child_index()
-    // }
+        mcts_node.get_best_child_index()
+    }
 
-    // fn human_choice(&self, _from_node: &mut StateDiff) -> usize {
-    //     0
-    // }
+    fn human_choice(&self, _game: &mut Game) -> usize {
+        0
+    }
 
-    // fn random_choice(&self, state_node: &mut StateDiff) -> usize {
-    //     let mut rng = rand::thread_rng();
-    //     state_node.generate_children();
-
-    //     rng.gen_range(0..state_node.children.len())
-    // }
+    fn random_choice(&self, game: &mut Game) -> usize {
+        let mut rng = rand::thread_rng();
+        game.gen_children_save(game.root_handle);
+        rng.gen_range(0..game.nodes[game.root_handle].children.len())
+    }
 }
