@@ -80,7 +80,7 @@ impl Game {
 
     /// Generate and append children.
     fn gen_children_save(&mut self, handle: usize) {
-        if self.nodes[handle].children.len() == 0 {
+        if self.nodes[handle].children.len() == 0 && !self.is_terminal(handle) {
             for child in self.gen_children(handle) {
                 self.append_state(child);
             }
@@ -138,6 +138,22 @@ impl Game {
     /// Return the next value of `top_cc`.
     fn get_next_top_cc(&self, handle: usize) -> usize {
         (self.diff_top_cc(handle) + 1) % TOTAL_CHANCE_CARDS
+    }
+
+    /// Gets the probabilities of all the child nodes of `handle`.
+    /// This will return an empty vector if the `handle` node doesn't
+    /// have any children. Panics if a child is not a chance node.
+    fn get_children_chances(&self, handle: usize) -> Vec<f64> {
+        let mut chances = vec![];
+
+        for child_handle in &self.nodes[handle].children {
+            match self.diff_branch_type(*child_handle) {
+                BranchType::Chance(p) => chances.push(*p),
+                _ => panic!("Choice node found in get_children_chances()"),
+            }
+        }
+
+        chances
     }
 
     /// Return a `StateDiff` with the boilerplate for chance cards:
