@@ -90,7 +90,6 @@ impl Game {
     /// `child_index` is not a regular handle, but the index of the target
     /// state in the current root node's `children` vec.
     fn set_root_state(&mut self, child_index: usize) {
-        // TODO: Clone all the parent diffs over to the root node
         let new_handle = self.nodes[self.root_handle]
             .children
             .swap_remove(child_index);
@@ -101,7 +100,17 @@ impl Game {
             self.mark_dirty(h);
         }
 
+        for d in DiffID::all() {
+            if !self.nodes[new_handle].diff_exists(d) {
+                let diff = self.diff_field(new_handle, d).clone();
+                self.nodes[new_handle].set_diff(d, diff);
+            }
+        }
+
         self.root_handle = new_handle;
+
+        // This state doesn't have a parent anymore
+        self.nodes[new_handle].parent = new_handle;
     }
 
     /// Mark a state and all of its descendants as 'dirty'.
