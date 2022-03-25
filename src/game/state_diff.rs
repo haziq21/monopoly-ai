@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 /*********        BRANCH TYPE        *********/
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 /// The type of branch that led to a game state.
 pub enum BranchType {
     /// A game state that was achieved by chance (e.g. by rolling the dice / getting a chance card).
@@ -206,7 +206,7 @@ impl StateDiff {
 
     /// Insert the specified diff, or update it if it  
     /// already exists. Return a mutable reference to the diff.
-    fn set_diff(&mut self, diff_id: DiffID, diff: FieldDiff) {
+    pub fn set_diff(&mut self, diff_id: DiffID, diff: FieldDiff) {
         // Get the new index of the diff field
         let diff_index = self.get_supposed_diff_index(diff_id);
 
