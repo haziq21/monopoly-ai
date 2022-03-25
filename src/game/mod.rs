@@ -1,4 +1,3 @@
-// TODO: replace the branch type of auction nodes with their parent's branch type when the root is set to an auction node
 use std::collections::HashMap;
 
 mod globals;
@@ -123,10 +122,6 @@ impl Game {
         }
     }
 
-    // fn own_all_diffs(&mut self, handle: usize) {
-    //     self.nodes[handle]
-    // }
-
     /// Return the player whose turn it currently is at the specified state.
     fn get_current_player(&self, handle: usize) -> &Player {
         &self.diff_players(handle)[self.diff_current_pindex(handle)]
@@ -229,6 +224,14 @@ impl Game {
         match s.get_diff_index(diff_id) {
             Some(i) => &s.diffs[i],
             None => self.diff_field(s.parent, diff_id),
+        }
+    }
+
+    /// Return the branch type of the state.
+    fn diff_branch_type(&self, handle: usize) -> &BranchType {
+        match self.diff_field(handle, DiffID::BranchType) {
+            FieldDiff::BranchType(x) => x,
+            _ => unreachable!(),
         }
     }
 
