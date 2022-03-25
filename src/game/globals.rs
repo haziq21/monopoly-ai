@@ -195,13 +195,29 @@ impl std::fmt::Display for Player {
     }
 }
 
-pub const DIFF_ID_BRANCH_TYPE: u8 = 7;
-pub const DIFF_ID_PLAYERS: u8 = 6;
-pub const DIFF_ID_CURRENT_PLAYER: u8 = 5;
-pub const DIFF_ID_OWNED_PROPERTIES: u8 = 4;
-pub const DIFF_ID_SEEN_CCS: u8 = 3;
-pub const DIFF_ID_SEEN_CCS_HEAD: u8 = 2;
-pub const DIFF_ID_LEVEL_1_RENT: u8 = 1;
+pub enum DiffID {
+    Level1Rent = 1,
+    SeenCcsHead,
+    SeenCcs,
+    OwnedProperties,
+    CurrentPlayer,
+    Players,
+    BranchType,
+}
+
+impl DiffID {
+    pub fn all() -> [DiffID; 7] {
+        [
+            DiffID::Level1Rent,
+            DiffID::SeenCcsHead,
+            DiffID::SeenCcs,
+            DiffID::OwnedProperties,
+            DiffID::CurrentPlayer,
+            DiffID::Players,
+            DiffID::BranchType,
+        ]
+    }
+}
 
 /// The position of 'Jail' on the game board.
 pub const JAIL_POSITION: u8 = 9;

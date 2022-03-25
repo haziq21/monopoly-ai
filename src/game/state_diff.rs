@@ -175,13 +175,13 @@ impl StateDiff {
     /*********        HELPERS        *********/
 
     /// Return whether the specified diff field is being tracked.
-    pub fn diff_exists(&self, diff_id: u8) -> bool {
-        (self.present_diffs >> diff_id) & 1 == 1
+    pub fn diff_exists(&self, diff_id: DiffID) -> bool {
+        (self.present_diffs >> diff_id as u8) & 1 == 1
     }
 
     /// Return the index of the specified diff in `self.diffs` if it were to exist.
-    pub fn get_supposed_diff_index(&self, diff_id: u8) -> usize {
-        let relevant_bits = self.present_diffs >> diff_id;
+    pub fn get_supposed_diff_index(&self, diff_id: DiffID) -> usize {
+        let relevant_bits = self.present_diffs >> diff_id as u8;
 
         let high_bit_sum = (relevant_bits >> 1 & 1)
             + (relevant_bits >> 2 & 1)
@@ -196,7 +196,7 @@ impl StateDiff {
 
     /// Return the index of the specified diff in `self.diffs`,
     ///  or `None` if the state doesn't track it.
-    pub fn get_diff_index(&self, diff_id: u8) -> Option<usize> {
+    pub fn get_diff_index(&self, diff_id: DiffID) -> Option<usize> {
         if !self.diff_exists(diff_id) {
             return None;
         }
@@ -206,7 +206,7 @@ impl StateDiff {
 
     /// Insert the specified diff, or update it if it  
     /// already exists. Return a mutable reference to the diff.
-    fn set_diff(&mut self, diff_id: u8, diff: FieldDiff) {
+    fn set_diff(&mut self, diff_id: DiffID, diff: FieldDiff) {
         // Get the new index of the diff field
         let diff_index = self.get_supposed_diff_index(diff_id);
 
@@ -225,39 +225,36 @@ impl StateDiff {
 
     /// Set a `BranchType` as the state's own diff.
     pub fn set_branch_type(&mut self, branch_type: BranchType) {
-        self.set_diff(DIFF_ID_BRANCH_TYPE, FieldDiff::BranchType(branch_type));
+        self.set_diff(DiffID::BranchType, FieldDiff::BranchType(branch_type));
     }
 
     /// Set a `players` vector as the state's own diff.
     pub fn set_players(&mut self, players: Vec<Player>) {
-        self.set_diff(DIFF_ID_PLAYERS, FieldDiff::Players(players));
+        self.set_diff(DiffID::Players, FieldDiff::Players(players));
     }
 
     pub fn set_current_pindex(&mut self, curr_player: usize) {
-        self.set_diff(
-            DIFF_ID_CURRENT_PLAYER,
-            FieldDiff::CurrentPlayer(curr_player),
-        );
+        self.set_diff(DiffID::CurrentPlayer, FieldDiff::CurrentPlayer(curr_player));
     }
 
     pub fn set_owned_properties(&mut self, owned_properties: HashMap<u8, PropertyOwnership>) {
         self.set_diff(
-            DIFF_ID_OWNED_PROPERTIES,
+            DiffID::OwnedProperties,
             FieldDiff::OwnedProperties(owned_properties),
         );
     }
 
     /// Set a `seen_ccs` vector as the state's own diff.
     pub fn set_seen_ccs(&mut self, seen_ccs: Vec<ChanceCard>) {
-        self.set_diff(DIFF_ID_SEEN_CCS, FieldDiff::SeenCCs(seen_ccs));
+        self.set_diff(DiffID::SeenCcs, FieldDiff::SeenCCs(seen_ccs));
     }
 
     pub fn set_top_cc(&mut self, seen_ccs_head: usize) {
-        self.set_diff(DIFF_ID_SEEN_CCS_HEAD, FieldDiff::SeenCCsHead(seen_ccs_head));
+        self.set_diff(DiffID::SeenCcsHead, FieldDiff::SeenCCsHead(seen_ccs_head));
     }
 
     pub fn set_level_1_rent(&mut self, rent: u8) {
-        self.set_diff(DIFF_ID_LEVEL_1_RENT, FieldDiff::Level1Rent(rent));
+        self.set_diff(DiffID::Level1Rent, FieldDiff::Level1Rent(rent));
     }
 }
 

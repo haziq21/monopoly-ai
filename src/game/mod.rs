@@ -1,3 +1,4 @@
+// TODO: replace the branch type of auction nodes with their parent's branch type when the root is set to an auction node
 use std::collections::HashMap;
 
 mod globals;
@@ -40,6 +41,8 @@ impl Game {
 
     /// Play the game until it ends.
     pub fn play(mut agents: Vec<Agent>) {
+        // TODO: Add chance nodes to move_history
+        // TODO: Update root node when we've moved to a chance node
         let mut game = Game::new(agents.len());
         game.gen_children_save(game.root_handle);
         game.gen_children_save(game.nodes[game.root_handle].children[0]);
@@ -87,6 +90,7 @@ impl Game {
     /// `child_index` is not a regular handle, but the index of the target
     /// state in the current root node's `children` vec.
     fn set_root_state(&mut self, child_index: usize) {
+        // TODO: Clone all the parent diffs over to the root node
         let new_handle = self.nodes[self.root_handle]
             .children
             .swap_remove(child_index);
@@ -109,6 +113,10 @@ impl Game {
             self.mark_dirty(h);
         }
     }
+
+    // fn own_all_diffs(&mut self, handle: usize) {
+    //     self.nodes[handle]
+    // }
 
     /// Return the player whose turn it currently is at the specified state.
     fn get_current_player(&self, handle: usize) -> &Player {
@@ -205,7 +213,7 @@ impl Game {
 
     /*********        STATE DIFF GETTERS        *********/
 
-    fn diff_field(&self, handle: usize, diff_id: u8) -> &FieldDiff {
+    fn diff_field(&self, handle: usize, diff_id: DiffID) -> &FieldDiff {
         // Alias for the state
         let s = &self.nodes[handle];
 
@@ -217,7 +225,7 @@ impl Game {
 
     /// Return a vector of players playing the game at the specified state.
     fn diff_players(&self, handle: usize) -> &Vec<Player> {
-        match self.diff_field(handle, DIFF_ID_PLAYERS) {
+        match self.diff_field(handle, DiffID::Players) {
             FieldDiff::Players(x) => x,
             _ => unreachable!(),
         }
@@ -225,7 +233,7 @@ impl Game {
 
     /// Return the index of the player whose turn it currently is at the specified state.
     fn diff_current_pindex(&self, handle: usize) -> usize {
-        match self.diff_field(handle, DIFF_ID_CURRENT_PLAYER) {
+        match self.diff_field(handle, DiffID::CurrentPlayer) {
             FieldDiff::CurrentPlayer(x) => *x,
             _ => unreachable!(),
         }
@@ -233,7 +241,7 @@ impl Game {
 
     /// Return the properties that are owned by players at the specified state.
     fn diff_owned_properties(&self, handle: usize) -> &HashMap<u8, PropertyOwnership> {
-        match self.diff_field(handle, DIFF_ID_OWNED_PROPERTIES) {
+        match self.diff_field(handle, DiffID::OwnedProperties) {
             FieldDiff::OwnedProperties(x) => x,
             _ => unreachable!(),
         }
@@ -241,14 +249,15 @@ impl Game {
 
     /// Return a vector of chance cards that have already been seen from the specified state.
     fn diff_seen_ccs(&self, handle: usize) -> &Vec<ChanceCard> {
-        match self.diff_field(handle, DIFF_ID_SEEN_CCS) {
+        match self.diff_field(handle, DiffID::SeenCcs) {
             FieldDiff::SeenCCs(x) => x,
             _ => unreachable!(),
         }
     }
+
     /// Return top_cc from the specified state.
     fn diff_top_cc(&self, handle: usize) -> usize {
-        match self.diff_field(handle, DIFF_ID_SEEN_CCS_HEAD) {
+        match self.diff_field(handle, DiffID::SeenCcsHead) {
             FieldDiff::SeenCCsHead(x) => *x,
             _ => unreachable!(),
         }
@@ -256,7 +265,7 @@ impl Game {
 
     /// Return the specified state's `Level1Rent`.
     fn diff_lvl_1_rent(&self, handle: usize) -> u8 {
-        match self.diff_field(handle, DIFF_ID_LEVEL_1_RENT) {
+        match self.diff_field(handle, DiffID::Level1Rent) {
             FieldDiff::Level1Rent(x) => *x,
             _ => unreachable!(),
         }
