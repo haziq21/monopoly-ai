@@ -1,5 +1,6 @@
 use super::globals::*;
 use std::collections::HashMap;
+use std::fmt;
 
 /*********        BRANCH TYPE        *********/
 
@@ -134,7 +135,7 @@ pub struct StateDiff {
     /// This is not in `diffs` as it changes every move.
     pub next_move: MoveType,
     /// A message denoting what changed in this `StateDiff`.
-    pub message: String,
+    pub message: DiffMessage,
 }
 
 impl StateDiff {
@@ -148,7 +149,7 @@ impl StateDiff {
             parent,
             children: vec![],
             next_move: MoveType::Undefined,
-            message: String::new(),
+            message: DiffMessage::None,
         }
     }
 
@@ -168,7 +169,7 @@ impl StateDiff {
             parent: 0,
             children: vec![],
             next_move: MoveType::Roll,
-            message: String::new(),
+            message: DiffMessage::None,
         }
     }
 
@@ -258,17 +259,41 @@ impl StateDiff {
     }
 }
 
-/// A collection of functions that return `StateDiff` messages.
-pub mod diff_message {
-    pub fn roll_to_jail() -> String {
-        "roll to jail".to_string()
-    }
+#[derive(Debug, Clone)]
+pub enum DiffMessage {
+    None,
+    Roll(u8),
+    RollDoubles(u8),
+    RollToJail,
+    LandOwnProp,
+    LandOppProp,
+    BuyProp,
+    AuctionProp,
+    AfterAuction(usize, i32, f64),
+    Location(u8),
+    NoLocation,
+    ChanceCard(ChanceCard),
+}
 
-    pub fn roll_doubles(to_pos: u8) -> String {
-        format!("roll to {} (doubles)", to_pos)
-    }
+impl std::fmt::Display for DiffMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let msg: String = match self {
+            DiffMessage::None => "[placeholder message]".to_string(),
+            DiffMessage::Roll(p) => format!("roll to {}", p),
+            DiffMessage::RollDoubles(p) => format!("roll to {} (doubles)", p),
+            DiffMessage::RollToJail => "roll to jail".to_string(),
+            DiffMessage::LandOwnProp => "raise rent".to_string(),
+            DiffMessage::LandOppProp => "pay and raise rent".to_string(),
+            DiffMessage::BuyProp => "buy property".to_string(),
+            DiffMessage::AuctionProp => "auction property".to_string(),
+            DiffMessage::AfterAuction(i, m, p) => {
+                format!("auction to {} ({}% chance) for ${}", i, *p * 100., m)
+            }
+            DiffMessage::Location(l) => format!("teleport to {}", l),
+            DiffMessage::NoLocation => "don't teleport".to_string(),
+            DiffMessage::ChanceCard(cc) => format!("get chance card '{:#?}'", cc),
+        };
 
-    pub fn roll(to_pos: u8) -> String {
-        format!("roll to {}", to_pos)
+        write!(f, "{}", msg)
     }
 }
