@@ -160,6 +160,11 @@ impl MCTreeNode {
             return rollout_outcome;
         }
 
+        // We can't generate any more child states if we're at a terminal game state
+        if game.is_terminal(node_handle) {
+            return MCTreeNode::rollout(game, node_handle, agent_index) * value_multiplier;
+        }
+
         // Expand the tree and rollout from the first child if
         // the node is a leaf node that hasn't been visited yet
         game.gen_children_save(node_handle);
@@ -171,7 +176,7 @@ impl MCTreeNode {
             * value_multiplier
     }
 
-    fn rollout(game: &mut Game, mut handle: usize, agent_index: usize) -> f64 {
+    fn rollout(game: &mut Game, mut handle: usize, pindex: usize) -> f64 {
         let mut rng = rand::thread_rng();
 
         // Play the game randomly until game-over
@@ -179,38 +184,25 @@ impl MCTreeNode {
             game.gen_children_save(handle);
             match game.diff_branch_type(game.nodes[handle].children[0]) {
                 BranchType::Chance(_) => {
-                    let chances = game.get_children_chances(handle);
-                    let mut pos: f64 = rng.gen();
-                    let mut target_handle_found = false;
-
-                    for (i, &c) in chances.iter().enumerate() {
-                        if pos <= c {
-                            handle = game.nodes[handle].children[i];
-                            target_handle_found = true;
-                            break;
-                        }
-
-                        pos -= c;
-                    }
-
-                    // Just in case of floating-point arithmetic inacuraccies
-                    if !target_handle_found {
-                        handle = *game.nodes[handle].children.last().unwrap();
-                    }
+                    let child_index = game.get_any_chance_child(handle);
+                    handle = game.nodes[handle].children[child_index];
                 }
-                BranchType::Choice => handle = rng.gen_range(0..game.nodes[handle].children.len()),
+                BranchType::Choice => {
+                    let children = &game.nodes[handle].children;
+                    handle = children[rng.gen_range(0..children.len())];
+                }
             }
         }
 
+        let player_balance = game.diff_players(handle)[pindex].balance.max(0);
         let total_balance: i32 = game
             .diff_players(handle)
             .iter()
             .map(|p| p.balance.max(0))
             .sum();
 
-        let agent_balance = game.diff_players(handle)[agent_index].balance.max(0);
-
-        agent_balance as f64 / total_balance as f64
+        // The value of the game state is calculated as the percentage of wealth a player owns
+        player_balance as f64 / total_balance as f64
     }
 }
 

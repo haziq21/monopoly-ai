@@ -1,3 +1,4 @@
+use rand::Rng;
 use std::collections::HashMap;
 
 mod globals;
@@ -44,15 +45,24 @@ impl Game {
         // TODO: Update root node when we've moved to a chance node
         let mut game = Game::new(agents.len());
         game.gen_children_save(game.root_handle);
-        game.gen_children_save(game.nodes[game.root_handle].children[0]);
+        let mut traversing_chances = true;
 
-        for n in &game.nodes {
-            println!("{}", n.message)
+        // Keep looping while the direct children of the root node are chance nodes
+        while traversing_chances {
+            let child_index = game.get_any_chance_child(game.root_handle);
+            game.advance_root_node(child_index);
+            game.gen_children_save(game.root_handle);
+            let first_child = game.nodes[game.root_handle].children[0];
+
+            match game.diff_branch_type(first_child) {
+                BranchType::Choice => traversing_chances = false,
+                _ => (),
+            }
         }
 
+        println!("done with agent choice setup");
         let agent_choice = agents[0].make_choice(&mut game);
-        game.set_root_state(agent_choice);
-        println!("{}", agent_choice);
+        game.advance_root_node(agent_choice);
     }
 
     /*********        HELPERS        *********/
@@ -62,14 +72,15 @@ impl Game {
         let i;
         let parent = state.parent;
 
-        if self.dirty_handles.len() == 0 {
-            // Simply append the new state to the tree
-            self.nodes.push(state);
-            i = self.nodes.len() - 1;
-        } else {
-            // Replace the last dirty state with the new state
-            i = self.dirty_handles.pop().unwrap();
-            self.nodes[i] = state;
+        match self.dirty_handles.pop() {
+            Some(handle) => {
+                i = handle;
+                self.nodes[i] = state;
+            }
+            None => {
+                self.nodes.push(state);
+                i = self.nodes.len() - 1;
+            }
         }
 
         // Update parent state's children vector
@@ -90,7 +101,7 @@ impl Game {
     /// Set the root state to be one of the existing root state's children.
     /// `child_index` is not a regular handle, but the index of the target
     /// state in the current root node's `children` vec.
-    fn set_root_state(&mut self, child_index: usize) {
+    fn advance_root_node(&mut self, child_index: usize) {
         let new_handle = self.nodes[self.root_handle]
             .children
             .swap_remove(child_index);
@@ -113,6 +124,11 @@ impl Game {
         // Set itself as its parent to ensure that there are
         // no more references to deleted nodes (just in case)
         self.nodes[new_handle].parent = new_handle;
+
+        println!(
+            "root moved to child #{}: {}",
+            child_index, self.nodes[self.root_handle].message
+        );
     }
 
     /// Mark a state and all of its descendants as 'dirty'.
@@ -140,7 +156,7 @@ impl Game {
         (self.diff_top_cc(handle) + 1) % TOTAL_CHANCE_CARDS
     }
 
-    /// Gets the probabilities of all the child nodes of `handle`.
+    /// Return the probabilities of all the child nodes of `handle`.
     /// This will return an empty vector if the `handle` node doesn't
     /// have any children. Panics if a child is not a chance node.
     fn get_children_chances(&self, handle: usize) -> Vec<f64> {
@@ -154,6 +170,26 @@ impl Game {
         }
 
         chances
+    }
+
+    /// Return the index of a randomly selected child chance node.
+    /// Note that this returns the node's index in `handle`'s `children`
+    /// vector, not a handle that can used in `game.nodes[handle]`.
+    fn get_any_chance_child(&self, handle: usize) -> usize {
+        let chances = self.get_children_chances(handle);
+        let mut rng = rand::thread_rng();
+        let mut pos: f64 = rng.gen();
+
+        for (i, &c) in chances.iter().enumerate() {
+            if pos <= c {
+                return i;
+            }
+
+            pos -= c;
+        }
+
+        // Just in case of floating-point arithmetic inacuraccies
+        chances.len() - 1
     }
 
     /// Return a `StateDiff` with the boilerplate for chance cards:
@@ -184,8 +220,9 @@ impl Game {
     /// Modify the state to be the next player's turn if the current player didn't roll doubles.
     /// This only affects the state's next_move and current_pindex
     fn advance_move(&self, handle: usize, state: &mut StateDiff) {
+        state.next_move = MoveType::Roll;
+
         if self.get_current_player(handle).doubles_rolled == 0 {
-            state.next_move = MoveType::Roll;
             state.set_current_pindex(self.get_next_pindex(handle));
         }
     }
@@ -208,7 +245,7 @@ impl Game {
 
         if balance <= 20 {
             // Just in case...
-            panic!("get_winning_bid_chances() received players with < $20");
+            panic!("get_winning_bid_chances() received players with <= $20");
         }
 
         // Based on a bell curve
@@ -497,9 +534,8 @@ impl Game {
 
         // Check if the property at the player's location is owned
         if let Some(prop) = self.diff_owned_properties(handle).get(&player_pos) {
-            // This state doesn't have a `BranchType` because it's a
-            // compound state (it's the second part of its parent state)
             let mut new_state = StateDiff::new_with_parent(handle);
+            new_state.set_branch_type(BranchType::Chance(1.));
 
             // The current player owes rent to the owner of this property
             if prop.owner != curr_pindex {
@@ -530,6 +566,7 @@ impl Game {
 
         // The state where the player buys the property
         let mut buy_state = StateDiff::new_with_parent(handle);
+        self.advance_move(handle, &mut buy_state);
         buy_state.set_branch_type(BranchType::Choice);
 
         // New players
@@ -625,9 +662,9 @@ impl Game {
         let mut children = vec![];
         let curr_pindex = self.diff_current_pindex(handle);
         let (cc, target_rent) = if max {
-            (ChanceCard::RentTo1, 1)
-        } else {
             (ChanceCard::RentTo5, 5)
+        } else {
+            (ChanceCard::RentTo1, 1)
         };
 
         for (pos, prop) in self.diff_owned_properties(handle) {
