@@ -217,7 +217,7 @@ impl StateDiff {
             // Insert the diff
             self.diffs.insert(diff_index, diff);
             // Amend the diff presence flag
-            self.present_diffs &= 1;
+            self.present_diffs |= 1 << diff_id as u8;
         }
     }
 
