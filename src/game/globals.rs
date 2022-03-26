@@ -73,7 +73,7 @@ pub enum ChanceCard {
 }
 
 impl ChanceCard {
-    pub fn unseen_counts(seen_cards: &Vec<ChanceCard>) -> HashMap<ChanceCard, u8> {
+    pub fn unseen_counts(seen_cards: &[ChanceCard]) -> HashMap<ChanceCard, u8> {
         let mut counts = HashMap::from([
             (ChanceCard::RentTo1, 3),
             (ChanceCard::RentTo5, 1),
