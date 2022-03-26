@@ -8,7 +8,7 @@ mod agent;
 pub use agent::Agent;
 
 mod state_diff;
-use state_diff::{diff_message, BranchType, FieldDiff, MoveType, PropertyOwnership, StateDiff};
+use state_diff::{BranchType, DiffMessage, FieldDiff, MoveType, PropertyOwnership, StateDiff};
 
 /// A simulation of Monopoly.
 pub struct Game {
@@ -60,9 +60,12 @@ impl Game {
             }
         }
 
-        println!("done with agent choice setup");
+        println!("-- done with agent choice setup --");
         let agent_choice = agents[0].make_choice(&mut game);
         game.advance_root_node(agent_choice);
+        println!("-- done with agent choice --");
+        let i = game.get_any_chance_child(game.root_handle);
+        game.advance_root_node(i);
     }
 
     /*********        HELPERS        *********/
@@ -106,6 +109,15 @@ impl Game {
             .children
             .swap_remove(child_index);
 
+        println!(
+            "root moved to child #{}: {}",
+            child_index, self.nodes[new_handle].message
+        );
+
+        if self.nodes[new_handle].diff_exists(DiffID::CurrentPlayer) {
+            println!("-- next player's turn at new root node --");
+        }
+
         // Mark the old handle and all of the new handle's siblings as 'dirty'
         self.dirty_handles.push(self.root_handle);
         for h in self.nodes[self.root_handle].children.clone() {
@@ -124,11 +136,6 @@ impl Game {
         // Set itself as its parent to ensure that there are
         // no more references to deleted nodes (just in case)
         self.nodes[new_handle].parent = new_handle;
-
-        println!(
-            "root moved to child #{}: {}",
-            child_index, self.nodes[self.root_handle].message
-        );
     }
 
     /// Mark a state and all of its descendants as 'dirty'.
@@ -228,14 +235,19 @@ impl Game {
     }
 
     fn get_auction_winner_chances(&self, handle: usize) -> Vec<(usize, f64)> {
-        let balances = self
+        let possible_winners = self
             .diff_players(handle)
             .iter()
-            .filter(|p| p.balance > 20)
-            .map(|p| p.balance as f64);
-        let total_balance: f64 = balances.clone().sum();
+            .enumerate()
+            .filter(|(_, p)| p.balance > 20);
+        let total_balance = possible_winners
+            .clone()
+            .map(|(_, p)| p.balance)
+            .sum::<i32>() as f64;
 
-        balances.map(|b| b / total_balance).enumerate().collect()
+        possible_winners
+            .map(|(i, p)| (i, p.balance as f64 / total_balance))
+            .collect()
     }
 
     fn get_winning_bid_chances(&self, handle: usize, winner: usize) -> Vec<(i32, f64)> {
@@ -250,11 +262,11 @@ impl Game {
 
         // Based on a bell curve
         [
-            (100. / 6. * 1., 6.75),
-            (100. / 6. * 2., 24.1),
-            (100. / 6. * 3., 38.3),
-            (100. / 6. * 4., 24.1),
-            (100. / 6. * 5., 6.75),
+            (1. / 6., 0.0675),
+            (2. / 6., 0.2410),
+            (3. / 6., 0.3830),
+            (4. / 6., 0.2410),
+            (5. / 6., 0.0675),
         ]
         .iter()
         .map(|(pos, chance)| (balance_at_pos(*pos), *chance))
@@ -386,7 +398,7 @@ impl Game {
                     players[i].balance -= 100;
                 }
 
-                diff.message = diff_message::roll(players[i].position);
+                diff.message = DiffMessage::Roll(players[i].position);
                 // Set the next move
                 diff.next_move = MoveType::when_landed_on(players[i].position);
                 // Set the players diff
@@ -415,7 +427,7 @@ impl Game {
                 // Check if the player landed on 'go to jail'
                 if players[i].position == GO_TO_JAIL_POSITION {
                     players[i].send_to_jail();
-                    state.message = diff_message::roll_to_jail();
+                    state.message = DiffMessage::RollToJail;
                 }
                 // Check if this roll got doubles
                 else if roll.is_double {
@@ -425,14 +437,14 @@ impl Game {
                     // Go to jail after three consecutive doubles
                     if players[i].doubles_rolled == 3 {
                         players[i].send_to_jail();
-                        state.message = diff_message::roll_to_jail();
+                        state.message = DiffMessage::RollToJail;
                     } else {
-                        state.message = diff_message::roll_doubles(players[i].position);
+                        state.message = DiffMessage::RollDoubles(players[i].position);
                     }
                 } else {
                     // Reset the doubles counter
                     players[i].doubles_rolled = 0;
-                    state.message = diff_message::roll(players[i].position);
+                    state.message = DiffMessage::Roll(players[i].position);
                 }
 
                 // Set the next move
@@ -487,6 +499,7 @@ impl Game {
                 children.push(self.gen_choiceless_cc_child(card, handle, probability));
             } else {
                 let mut state = StateDiff::new_with_parent(handle);
+                state.message = DiffMessage::ChanceCard(card);
                 state.set_branch_type(BranchType::Chance(probability));
                 state.next_move = MoveType::ChoicefulCC(card);
                 children.push(state);
@@ -501,16 +514,17 @@ impl Game {
         let mut children = vec![];
         let curr_pindex = self.diff_current_pindex(handle);
 
-        for pos in PROP_POSITIONS.iter() {
+        for &pos in PROP_POSITIONS.iter() {
             let mut players = self.diff_players(handle).clone();
 
             // Pay $100
             players[curr_pindex].balance -= 100;
             // Move to a property
-            players[curr_pindex].position = *pos;
+            players[curr_pindex].position = pos;
 
             // Add the new state to children
             let mut new_state = StateDiff::new_with_parent(handle);
+            new_state.message = DiffMessage::Location(pos);
             new_state.next_move = MoveType::Property;
             new_state.set_branch_type(BranchType::Choice);
             new_state.set_players(players);
@@ -519,6 +533,7 @@ impl Game {
 
         // There's also the option to do nothing
         let mut no_move = StateDiff::new_with_parent(handle);
+        no_move.message = DiffMessage::NoLocation;
         self.advance_move(handle, &mut no_move);
         no_move.set_branch_type(BranchType::Choice);
         children.push(no_move);
@@ -551,6 +566,10 @@ impl Game {
                 players[curr_pindex].balance -= balance_due;
                 players[prop.owner].balance += balance_due;
                 new_state.set_players(players);
+
+                new_state.message = DiffMessage::LandOppProp;
+            } else {
+                new_state.message = DiffMessage::LandOwnProp;
             }
 
             // Raise the rent level
@@ -566,6 +585,7 @@ impl Game {
 
         // The state where the player buys the property
         let mut buy_state = StateDiff::new_with_parent(handle);
+        buy_state.message = DiffMessage::BuyProp;
         self.advance_move(handle, &mut buy_state);
         buy_state.set_branch_type(BranchType::Choice);
 
@@ -587,6 +607,7 @@ impl Game {
 
         // The state where the player auctions the property
         let mut auction_state = StateDiff::new_with_parent(handle);
+        auction_state.message = DiffMessage::AuctionProp;
         auction_state.set_branch_type(BranchType::Choice);
         auction_state.next_move = MoveType::Auction;
 
@@ -604,6 +625,8 @@ impl Game {
                 let mut players = self.diff_players(handle).clone();
                 let mut props = self.diff_owned_properties(handle).clone();
                 let mut new_state = StateDiff::new_with_parent(handle);
+                new_state.message =
+                    DiffMessage::AfterAuction(auction_winner, winning_bid, player_chance);
 
                 // It's the current player who is on the property that is being auctioned,
                 // so we use their position instead of the position of the player who won the auction
@@ -627,6 +650,12 @@ impl Game {
                 self.advance_move(handle, &mut new_state);
                 children.push(new_state);
             }
+        }
+
+        if children.len() == 0 {
+            let mut state = StateDiff::new_with_parent(handle);
+            self.advance_move(handle, &mut state);
+            children.push(state);
         }
 
         children
