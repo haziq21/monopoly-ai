@@ -587,7 +587,6 @@ impl Game {
 
             // The current player owes rent to the owner of this property
             if prop.owner != curr_pindex {
-                // TODO: Implement SellProp MoveType
                 let mut players = self.diff_players(handle).clone();
                 let new_rent_level = if self.diff_lvl_1_rent(handle) == 0 {
                     prop.rent_level
@@ -599,8 +598,13 @@ impl Game {
                 // Pay the owner using the current player's money
                 players[curr_pindex].balance -= balance_due;
                 players[prop.owner].balance += balance_due;
-                new_state.set_players(players);
 
+                // The player has to sell his own properties if he goes bankrupt
+                if players[curr_pindex].balance < 0 {
+                    new_state.next_move = MoveType::SellProperty;
+                }
+
+                new_state.set_players(players);
                 new_state.message = DiffMessage::LandOppProp;
             } else {
                 new_state.message = DiffMessage::LandOwnProp;
@@ -611,8 +615,11 @@ impl Game {
             props.get_mut(&player_pos).unwrap().raise_rent();
             new_state.set_owned_properties(props);
 
-            // It's the next turn now
-            self.advance_move(handle, &mut new_state);
+            // Advance to the next turn if the move type hasn't already been defined
+            match new_state.next_move {
+                MoveType::Undefined => self.advance_move(handle, &mut new_state),
+                _ => (),
+            }
 
             return vec![new_state];
         } // At this point, the property isn't owned, so the player has to decide whether to buy or auction
