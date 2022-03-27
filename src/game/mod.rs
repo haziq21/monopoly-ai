@@ -710,37 +710,67 @@ impl Game {
     fn gen_sell_prop_children(&self, handle: usize) -> Vec<StateDiff> {
         let mut children = vec![];
         let curr_pindex = self.diff_current_pindex(handle);
+        let curr_balance = self.diff_players(handle)[curr_pindex].balance;
+        // The positions of all the properties the current player owns
+        let mut my_props = vec![];
 
-        // TODO: Optimise this
-        for (prop_pos, prop) in self.diff_owned_properties(handle) {
-            if prop.owner != curr_pindex {
-                continue;
+        // Fill up my_props
+        for (&pos, prop) in self.diff_owned_properties(handle) {
+            if prop.owner == curr_pindex {
+                my_props.push(pos);
             }
+        }
 
-            let mut sell_prop = StateDiff::new_with_parent(handle);
+        // If the current player doesn't have any properties to sell then it's game over
+        if my_props.len() == 0 {
+            let mut gameover = StateDiff::new_with_parent(handle);
+            gameover.set_branch_type(BranchType::Chance(1.));
+            self.advance_move(handle, &mut gameover);
+            return vec![gameover];
+        }
 
-            // Sell the property to the bank
-            let mut props = self.diff_owned_properties(handle).clone();
-            props.remove(&prop_pos);
-            sell_prop.set_owned_properties(props);
-            // The player gets the money
-            let mut players = self.diff_players(handle).clone();
-            players[curr_pindex].balance += PROPERTIES[&prop_pos].price;
+        for k in 1..my_props.len() {
+            let mut stop_here = false;
 
-            // If the player is still bankrupt, repeat the move
-            if players[curr_pindex].balance < 0 {
-                sell_prop.next_move = MoveType::SellProperty;
-            } else {
+            // Go through all the possible combinations of selling k properties
+            for comb in get_combinations(my_props.len(), k) {
+                let total_worth: i32 = comb.iter().map(|&i| PROPERTIES[&my_props[i]].price).sum();
+
+                if curr_balance + total_worth < 0 {
+                    continue;
+                }
+
+                stop_here = true;
+                let mut sell_prop = StateDiff::new_with_parent(handle);
+                sell_prop.set_branch_type(BranchType::Choice);
+
+                // Sell all the properties in `comb` to the bank
+                let mut props = self.diff_owned_properties(handle).clone();
+                for prop_i in comb {
+                    props.remove(&(prop_i as u8));
+                }
+                sell_prop.set_owned_properties(props);
+
+                // The player gets the money
+                let mut players = self.diff_players(handle).clone();
+                players[curr_pindex].balance += total_worth;
+                sell_prop.set_players(players);
+
                 self.advance_move(handle, &mut sell_prop);
+                children.push(sell_prop);
             }
 
-            sell_prop.set_players(players);
-            children.push(sell_prop);
+            if stop_here {
+                break;
+            }
         }
 
         if children.len() == 0 {
             // This state doesn't need a `next_move` because it's a terminal state
-            vec![StateDiff::new_with_parent(handle)]
+            let mut gameover = StateDiff::new_with_parent(handle);
+            self.advance_move(handle, &mut gameover);
+            gameover.set_branch_type(BranchType::Chance(1.));
+            vec![gameover]
         } else {
             children
         }

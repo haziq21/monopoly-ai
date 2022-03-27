@@ -195,6 +195,13 @@ impl std::fmt::Display for Player {
     }
 }
 
+// struct GameplayStats {
+//     sentences_received: Vec<u64>,
+//     property_worth: Vec<i32>,
+//     location_tile_usage: Vec<(u64, u64)>,
+//     auction_rate: Vec<(u64, u64)>,
+// }
+
 #[derive(Copy, Clone)]
 pub enum DiffID {
     Level1Rent = 1,
@@ -401,4 +408,44 @@ pub fn roll_for_doubles(tries: i32) -> Vec<DiceRoll> {
             }
         })
         .collect()
+}
+
+/// From the set of {x ∈ Z | 0 ≤ x ≤ n }, return all the possible k-long combinations.
+/// Adapted from this stackoverflow answer (https://stackoverflow.com/a/8332722) written in Delphi.
+pub fn get_combinations(n: usize, k: usize) -> Vec<Vec<usize>> {
+    let mut curr_comb = vec![];
+    let mut result = vec![];
+
+    // Setup comb for the initial combination
+    for i in 0..k {
+        curr_comb.push(i);
+    }
+
+    result.push(curr_comb.clone());
+
+    loop {
+        let mut i = k - 1;
+        curr_comb[i] += 1;
+
+        while i > 0 && curr_comb[i] >= n - k + 1 + i {
+            i -= 1;
+            curr_comb[i] += 1;
+        }
+
+        // Combination (n-k, n-k+1, ..., n) reached
+        if curr_comb[0] > n - k {
+            // No more combinations can be generated
+            break;
+        }
+
+        // comb now looks like (..., x, n, n, n, ..., n).
+        // Turn it into (..., x, x + 1, x + 2, ...)
+        for j in (i + 1)..k {
+            curr_comb[j] = curr_comb[j - 1] + 1;
+        }
+
+        result.push(curr_comb.clone());
+    }
+
+    result
 }
