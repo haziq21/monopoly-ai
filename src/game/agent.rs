@@ -94,13 +94,7 @@ impl MCTreeNode {
     }
 
     /// Traverse the MCTS tree and create child nodes as needed. Return rollout result.
-    fn traverse(
-        &mut self,
-        game: &mut Game,
-        node_handle: usize,
-        agent_index: usize,
-        temperature: f64,
-    ) -> f64 {
+    fn traverse(&mut self, game: &mut Game, handle: usize, pindex: usize, temperature: f64) -> f64 {
         let value_multiplier = match self.branch_type {
             BranchType::Chance(p) => p,
             _ => 1.,
@@ -136,11 +130,11 @@ impl MCTreeNode {
                 .map(|(i, _)| i)
                 .unwrap();
 
-            let next_handle = game.nodes[node_handle].children[child_index];
+            let next_handle = game.nodes[handle].children[child_index];
 
             // Value of the rollout to propagate
             let propagated_value =
-                self.children[child_index].traverse(game, next_handle, agent_index, temperature);
+                self.children[child_index].traverse(game, next_handle, pindex, temperature);
 
             // Update n and t
             self.num_visits += 1;
@@ -151,7 +145,7 @@ impl MCTreeNode {
 
         // Perform a rollout if the node has never been visited before
         if self.num_visits == 0 {
-            let rollout_outcome = MCTreeNode::rollout(game, node_handle, agent_index);
+            let rollout_outcome = MCTreeNode::rollout(game, handle, pindex);
 
             // Update n and t
             self.num_visits += 1;
@@ -161,19 +155,18 @@ impl MCTreeNode {
         }
 
         // We can't generate any more child states if we're at a terminal game state
-        if game.is_terminal(node_handle) {
-            return MCTreeNode::rollout(game, node_handle, agent_index) * value_multiplier;
+        if game.is_terminal(handle) {
+            return MCTreeNode::rollout(game, handle, pindex) * value_multiplier;
         }
 
         // Expand the tree and rollout from the first child if
         // the node is a leaf node that hasn't been visited yet
-        game.gen_children_save(node_handle);
+        game.gen_children_save(handle);
 
         // Sync the MCTS tree with the game-state tree
-        self.sync_children_count(game, node_handle);
+        self.sync_children_count(game, handle);
 
-        MCTreeNode::rollout(game, game.nodes[node_handle].children[0], agent_index)
-            * value_multiplier
+        MCTreeNode::rollout(game, game.nodes[handle].children[0], pindex) * value_multiplier
     }
 
     fn rollout(game: &mut Game, mut handle: usize, pindex: usize) -> f64 {
@@ -286,7 +279,7 @@ impl Agent {
         // Update mcts_node to reflect the current game state
         mcts_node.sync_with_walk(game, *latest_unseen_move);
         // Set the lastest unseen move to the move after this one
-        *latest_unseen_move = game.move_history.len() + 1;
+        *latest_unseen_move = game.move_history.len();
 
         // Ensure `mcts_node` has all of its direct children
         game.gen_children_save(game.root_handle);
