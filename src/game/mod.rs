@@ -41,31 +41,33 @@ impl Game {
 
     /// Play the game until it ends.
     pub fn play(mut agents: Vec<Agent>) {
-        // TODO: Add chance nodes to move_history
-        // TODO: Update root node when we've moved to a chance node
         let mut game = Game::new(agents.len());
-        game.gen_children_save(game.root_handle);
-        let mut traversing_chances = true;
 
-        // Keep looping while the direct children of the root node are chance nodes
-        while traversing_chances {
-            let child_index = game.get_any_chance_child(game.root_handle);
-            game.advance_root_node(child_index);
+        while !game.is_terminal(game.root_handle) {
             game.gen_children_save(game.root_handle);
-            let first_child = game.nodes[game.root_handle].children[0];
 
-            match game.diff_branch_type(first_child) {
-                BranchType::Choice => traversing_chances = false,
-                _ => (),
-            }
+            let first_child = game.nodes[game.root_handle].children[0];
+            let next_branch_type = game.diff_branch_type(first_child);
+            let current_pindex = game.diff_current_pindex(game.root_handle);
+
+            let next_node = match next_branch_type {
+                BranchType::Chance(_) => game.get_any_chance_child(game.root_handle),
+                BranchType::Choice => agents[current_pindex].make_choice(&mut game),
+            };
+
+            let pindex = game.diff_current_pindex(game.root_handle);
+
+            game.advance_root_node(next_node);
+
+            println!(
+                "move hist: p{} -> {} ({})",
+                pindex,
+                game.move_history.last().unwrap(),
+                game.nodes[game.root_handle].message
+            );
         }
 
-        println!("-- done with agent choice setup --");
-        let agent_choice = agents[0].make_choice(&mut game);
-        game.advance_root_node(agent_choice);
-        println!("-- done with agent choice --");
-        let i = game.get_any_chance_child(game.root_handle);
-        game.advance_root_node(i);
+        println!("loser: {}", game.get_loser(game.root_handle));
     }
 
     /*********        HELPERS        *********/
@@ -109,21 +111,13 @@ impl Game {
             .children
             .swap_remove(child_index);
 
-        println!(
-            "root moved to child #{}: {}",
-            child_index, self.nodes[new_handle].message
-        );
-
-        if self.nodes[new_handle].diff_exists(DiffID::CurrentPlayer) {
-            println!("-- next player's turn at new root node --");
-        }
-
         // Mark the old handle and all of the new handle's siblings as 'dirty'
         self.dirty_handles.push(self.root_handle);
         for h in self.nodes[self.root_handle].children.clone() {
             self.mark_dirty(h);
         }
 
+        // Ensure the new root node has every diff
         for d in DiffID::all() {
             if !self.nodes[new_handle].diff_exists(d) {
                 let diff = self.diff_field(new_handle, d).clone();
@@ -131,11 +125,15 @@ impl Game {
             }
         }
 
-        self.root_handle = new_handle;
+        // Update the game's move history
+        self.move_history.push(child_index);
 
         // Set itself as its parent to ensure that there are
         // no more references to deleted nodes (just in case)
         self.nodes[new_handle].parent = new_handle;
+
+        // Update the root handle
+        self.root_handle = new_handle;
     }
 
     /// Mark a state and all of its descendants as 'dirty'.
@@ -284,8 +282,29 @@ impl Game {
     }
 
     fn is_terminal(&self, handle: usize) -> bool {
-        self.diff_players(handle).iter().any(|p| p.balance <= 0)
+        self.diff_players(handle).iter().any(|p| p.balance < 0)
     }
+
+    fn get_loser(&self, handle: usize) -> usize {
+        if !self.is_terminal(handle) {
+            panic!("non-terminal state found while getting loser");
+        }
+
+        let losers: Vec<usize> = self
+            .diff_players(handle)
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.balance <= 0)
+            .map(|(i, _)| i)
+            .collect();
+        if losers.len() > 1 {
+            panic!("more than 1 loser");
+        }
+
+        losers[0]
+    }
+
+    // fn get_gameover_info(&self, handle: usize) {}
 
     /*********        STATE DIFF GETTERS        *********/
 
@@ -359,15 +378,28 @@ impl Game {
 
     /// Return child states that can be reached from the specified state.
     fn gen_children(&self, handle: usize) -> Vec<StateDiff> {
-        match self.nodes[handle].next_move {
+        let mut children = match self.nodes[handle].next_move {
             MoveType::Roll => self.gen_roll_children(handle),
             MoveType::ChanceCard => self.gen_cc_children(handle),
             MoveType::ChoicefulCC(cc) => self.gen_choiceful_cc_children(handle, cc),
             MoveType::Property => self.gen_property_children(handle),
+            MoveType::SellProperty => self.gen_sell_prop_children(handle),
             MoveType::Auction => self.gen_auction_children(handle),
             MoveType::Location => self.gen_location_children(handle),
             MoveType::Undefined => unreachable!(),
+        };
+
+        let lvl_1_rent = self.diff_lvl_1_rent(handle);
+        if lvl_1_rent > 0 {
+            for child in &mut children {
+                // Check if it's the next player's turn
+                if child.diff_exists(DiffID::CurrentPlayer) {
+                    child.set_level_1_rent(lvl_1_rent - 1);
+                }
+            }
         }
+
+        children
     }
 
     /// Return child states that can be reached by rolling dice from the specified state.
@@ -546,6 +578,7 @@ impl Game {
     fn gen_property_children(&self, handle: usize) -> Vec<StateDiff> {
         let player_pos = self.get_current_player(handle).position;
         let curr_pindex = self.diff_current_pindex(handle);
+        let mut children = vec![];
 
         // Check if the property at the player's location is owned
         if let Some(prop) = self.diff_owned_properties(handle).get(&player_pos) {
@@ -554,6 +587,7 @@ impl Game {
 
             // The current player owes rent to the owner of this property
             if prop.owner != curr_pindex {
+                // TODO: Implement SellProp MoveType
                 let mut players = self.diff_players(handle).clone();
                 let new_rent_level = if self.diff_lvl_1_rent(handle) == 0 {
                     prop.rent_level
@@ -583,35 +617,40 @@ impl Game {
             return vec![new_state];
         } // At this point, the property isn't owned, so the player has to decide whether to buy or auction
 
-        // The state where the player buys the property
-        let mut buy_state = StateDiff::new_with_parent(handle);
-        buy_state.message = DiffMessage::BuyProp;
-        self.advance_move(handle, &mut buy_state);
-        buy_state.set_branch_type(BranchType::Choice);
+        let curr_player_balance = self.diff_players(handle)[curr_pindex].balance;
+        // Check if the player has enough money to buy the property
+        if curr_player_balance > PROPERTIES[&player_pos].price {
+            // The state where the player buys the property
+            let mut buy_state = StateDiff::new_with_parent(handle);
+            buy_state.message = DiffMessage::BuyProp;
+            self.advance_move(handle, &mut buy_state);
+            buy_state.set_branch_type(BranchType::Choice);
+            // New players
+            let mut buy_state_players = self.diff_players(handle).clone();
+            buy_state_players[curr_pindex].balance -= PROPERTIES[&player_pos].price;
+            buy_state.set_players(buy_state_players);
+            // New owned properties
+            let mut buy_state_props = self.diff_owned_properties(handle).clone();
+            buy_state_props.insert(
+                player_pos,
+                PropertyOwnership {
+                    owner: curr_pindex,
+                    rent_level: 1,
+                },
+            );
+            buy_state.set_owned_properties(buy_state_props);
 
-        // New players
-        let mut buy_state_players = self.diff_players(handle).clone();
-        buy_state_players[curr_pindex].balance -= PROPERTIES[&player_pos].price;
-        buy_state.set_players(buy_state_players);
-
-        // New owned properties
-        let mut buy_state_props = self.diff_owned_properties(handle).clone();
-        buy_state_props.insert(
-            player_pos,
-            PropertyOwnership {
-                owner: curr_pindex,
-                rent_level: 1,
-            },
-        );
-        buy_state.set_owned_properties(buy_state_props);
+            children.push(buy_state);
+        }
 
         // The state where the player auctions the property
         let mut auction_state = StateDiff::new_with_parent(handle);
         auction_state.message = DiffMessage::AuctionProp;
         auction_state.set_branch_type(BranchType::Choice);
         auction_state.next_move = MoveType::Auction;
+        children.push(auction_state);
 
-        vec![buy_state, auction_state]
+        children
     }
 
     /// Return child states that can be reached by auctioning a property.
@@ -659,6 +698,45 @@ impl Game {
         }
 
         children
+    }
+
+    fn gen_sell_prop_children(&self, handle: usize) -> Vec<StateDiff> {
+        let mut children = vec![];
+        let curr_pindex = self.diff_current_pindex(handle);
+
+        // TODO: Optimise this
+        for (prop_pos, prop) in self.diff_owned_properties(handle) {
+            if prop.owner != curr_pindex {
+                continue;
+            }
+
+            let mut sell_prop = StateDiff::new_with_parent(handle);
+
+            // Sell the property to the bank
+            let mut props = self.diff_owned_properties(handle).clone();
+            props.remove(&prop_pos);
+            sell_prop.set_owned_properties(props);
+            // The player gets the money
+            let mut players = self.diff_players(handle).clone();
+            players[curr_pindex].balance += PROPERTIES[&prop_pos].price;
+
+            // If the player is still bankrupt, repeat the move
+            if players[curr_pindex].balance < 0 {
+                sell_prop.next_move = MoveType::SellProperty;
+            } else {
+                self.advance_move(handle, &mut sell_prop);
+            }
+
+            sell_prop.set_players(players);
+            children.push(sell_prop);
+        }
+
+        if children.len() == 0 {
+            // This state doesn't need a `next_move` because it's a terminal state
+            vec![StateDiff::new_with_parent(handle)]
+        } else {
+            children
+        }
     }
 
     /*********        CHOICEFUL CC STATE GENERATION        *********/

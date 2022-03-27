@@ -64,6 +64,7 @@ pub enum MoveType {
     Undefined,
     Roll,
     Property,
+    SellProperty,
     Auction,
     Location,
     ChanceCard,
