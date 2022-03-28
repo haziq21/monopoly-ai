@@ -12,8 +12,7 @@ use state_diff::{BranchType, DiffMessage, FieldDiff, MoveType, PropertyOwnership
 
 /// A simulation of Monopoly.
 pub struct Game {
-    /// Number of players playing the game.
-    player_count: usize,
+    root_turn: usize,
     /// The moves taken by players in terms of the indexes of the children.
     move_history: Vec<usize>,
     /// The current game state, as well as all its decendants.
@@ -31,7 +30,7 @@ impl Game {
     /// Return a new game.
     pub fn new(player_count: usize) -> Self {
         Self {
-            player_count,
+            root_turn: 0,
             move_history: vec![],
             nodes: vec![StateDiff::new_root(player_count)],
             dirty_handles: vec![],
@@ -59,15 +58,12 @@ impl Game {
 
             game.advance_root_node(next_node);
 
-            println!(
-                "move hist: p{} -> {} ({})",
-                pindex,
-                game.move_history.last().unwrap(),
-                game.nodes[game.root_handle].message
-            );
+            println!("p{}: {}", pindex, game.nodes[game.root_handle].message);
         }
 
         println!("loser: {}", game.get_loser(game.root_handle));
+        println!("node tree size: {}", game.nodes.len());
+        println!("turns played: {}", game.root_turn);
     }
 
     /*********        HELPERS        *********/
@@ -117,6 +113,11 @@ impl Game {
             self.mark_dirty(h);
         }
 
+        // Update the root turn
+        if self.nodes[new_handle].diff_exists(DiffID::CurrentPlayer) {
+            self.root_turn += 1;
+        }
+
         // Ensure the new root node has every diff
         for d in DiffID::all() {
             if !self.nodes[new_handle].diff_exists(d) {
@@ -153,7 +154,7 @@ impl Game {
 
     /// Return the index of the player whose turn it will be next.
     fn get_next_pindex(&self, handle: usize) -> usize {
-        (self.diff_current_pindex(handle) + 1) % self.player_count
+        (self.diff_current_pindex(handle) + 1) % self.diff_players(handle).len()
     }
 
     /// Return the next value of `top_cc`.
@@ -237,7 +238,7 @@ impl Game {
             .diff_players(handle)
             .iter()
             .enumerate()
-            .filter(|(_, p)| p.balance > 20);
+            .filter(|(_, p)| p.balance >= 20);
         let total_balance = possible_winners
             .clone()
             .map(|(_, p)| p.balance)
@@ -253,7 +254,7 @@ impl Game {
         let balance_at_pos =
             |pos: f64| ((balance - 20) as f64 * pos / 20.0).round() as i32 * 20 + 20;
 
-        if balance <= 20 {
+        if balance < 20 {
             // Just in case...
             panic!("get_winning_bid_chances() received players with <= $20");
         }
@@ -282,7 +283,8 @@ impl Game {
     }
 
     fn is_terminal(&self, handle: usize) -> bool {
-        self.diff_players(handle).iter().any(|p| p.balance < 0)
+        let bankrupt = self.diff_players(handle).iter().any(|p| p.balance < 0);
+        bankrupt && !matches!(self.nodes[handle].next_move, MoveType::SellProperty)
     }
 
     fn get_loser(&self, handle: usize) -> usize {
@@ -936,7 +938,7 @@ impl Game {
         let mut children = vec![];
         let curr_pindex = self.diff_current_pindex(handle);
 
-        for i in 0..self.player_count {
+        for i in 0..self.diff_players(handle).len() {
             // Skip the current player
             if i == curr_pindex {
                 continue;
@@ -999,7 +1001,7 @@ impl Game {
         let mut children = vec![];
         let curr_pindex = self.diff_current_pindex(handle);
 
-        for i in 0..self.player_count {
+        for i in 0..self.diff_players(handle).len() {
             // Skip the current player
             if i == curr_pindex {
                 continue;
@@ -1094,7 +1096,7 @@ impl Game {
         let mut state = self.new_state_from_cc(ChanceCard::Level1Rent, handle);
         state.set_branch_type(BranchType::Chance(probability));
         // Set the diff to 2 rounds (player_count * 2 turns per player)
-        state.set_level_1_rent(self.player_count as u8 * 2);
+        state.set_level_1_rent(self.diff_players(handle).len() as u8 * 2);
 
         state
     }
