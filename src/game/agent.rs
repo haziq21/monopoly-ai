@@ -189,11 +189,11 @@ impl MCTreeNode {
 
         let players = game.diff_players(handle);
         let player_balance = players[pindex].balance as f64;
-        let mean_balance: f64 = players.iter().map(|p| p.balance).sum::<i32>() as f64
-            / game.diff_players(handle).len() as f64;
+        let mean_balance: f64 =
+            players.iter().map(|p| p.balance).sum::<i32>() as f64 / players.len() as f64;
 
         // The value of the game state is calculated as a player's distance from the mean balance
-        (mean_balance - player_balance).abs()
+        player_balance - mean_balance
     }
 }
 
@@ -284,10 +284,21 @@ impl Agent {
         mcts_node.sync_children_count(game, game.root_handle);
 
         // Continue searching until time is up
-        while start_time.elapsed() < max_time {
+        while start_time.elapsed() < max_time
+            || mcts_node
+                .children
+                .iter()
+                .any(|n| n.get_average_value().is_nan())
+        {
             mcts_node.traverse(game, game.root_handle, agent_index, temperature);
         }
 
+        let p = mcts_node
+            .children
+            .iter()
+            .map(|n| n.get_average_value())
+            .collect::<Vec<f64>>();
+        println!("{:?}", p);
         mcts_node.get_best_child_index()
     }
 
