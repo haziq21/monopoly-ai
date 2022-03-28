@@ -270,7 +270,7 @@ pub enum DiffMessage {
     LandOppProp,
     BuyProp,
     AuctionProp,
-    AfterAuction(usize, i32, f64),
+    AfterAuction(usize, i32),
     Location(u8),
     NoLocation,
     ChanceCard(ChanceCard),
@@ -287,8 +287,8 @@ impl std::fmt::Display for DiffMessage {
             DiffMessage::LandOppProp => "pay and raise rent".to_string(),
             DiffMessage::BuyProp => "buy property".to_string(),
             DiffMessage::AuctionProp => "auction property".to_string(),
-            DiffMessage::AfterAuction(i, m, p) => {
-                format!("auction to {} ({}% chance) for ${}", i, *p * 100., m)
+            DiffMessage::AfterAuction(i, m) => {
+                format!("auction to {} for ${}", i, m)
             }
             DiffMessage::Location(l) => format!("teleport to {}", l),
             DiffMessage::NoLocation => "don't teleport".to_string(),

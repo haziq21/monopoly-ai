@@ -1,5 +1,5 @@
 use rand::Rng;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 mod globals;
 use globals::*;
@@ -47,18 +47,20 @@ impl Game {
 
             let first_child = game.nodes[game.root_handle].children[0];
             let next_branch_type = game.diff_branch_type(first_child);
-            let current_pindex = game.diff_current_pindex(game.root_handle);
+            let curr_pindex = game.diff_current_pindex(game.root_handle);
 
             let next_node = match next_branch_type {
                 BranchType::Chance(_) => game.get_any_chance_child(game.root_handle),
-                BranchType::Choice => agents[current_pindex].make_choice(&mut game),
+                BranchType::Choice => agents[curr_pindex].make_choice(&mut game),
             };
-
-            let pindex = game.diff_current_pindex(game.root_handle);
 
             game.advance_root_node(next_node);
 
-            println!("p{}: {}", pindex, game.nodes[game.root_handle].message);
+            print!("{}", game.diff_players(game.root_handle)[curr_pindex]);
+            println!(
+                " (p{}): {}",
+                curr_pindex, game.nodes[game.root_handle].message
+            );
         }
 
         println!("loser: {}", game.get_loser(game.root_handle));
@@ -198,6 +200,18 @@ impl Game {
         chances.len() - 1
     }
 
+    fn get_current_props(&self, handle: usize) -> HashSet<u8> {
+        let pindex = self.diff_current_pindex(handle);
+        let mut props = HashSet::new();
+        for (&pos, prop) in self.diff_owned_properties(handle) {
+            if prop.owner == pindex {
+                props.insert(pos);
+            }
+        }
+
+        props
+    }
+
     /// Return a `StateDiff` with the boilerplate for chance cards:
     /// - Sets `next_move` to `Roll`
     /// - Updates `current_player` if needed
@@ -296,7 +310,7 @@ impl Game {
             .diff_players(handle)
             .iter()
             .enumerate()
-            .filter(|(_, p)| p.balance <= 0)
+            .filter(|(_, p)| p.balance < 0)
             .map(|(i, _)| i)
             .collect();
         if losers.len() > 1 {
@@ -673,8 +687,7 @@ impl Game {
                 let mut players = self.diff_players(handle).clone();
                 let mut props = self.diff_owned_properties(handle).clone();
                 let mut new_state = StateDiff::new_with_parent(handle);
-                new_state.message =
-                    DiffMessage::AfterAuction(auction_winner, winning_bid, player_chance);
+                new_state.message = DiffMessage::AfterAuction(auction_winner, winning_bid);
 
                 // It's the current player who is on the property that is being auctioned,
                 // so we use their position instead of the position of the player who won the auction
@@ -842,11 +855,17 @@ impl Game {
         } else {
             ChanceCard::SetRentDec
         };
+        let my_props = self.get_current_props(handle);
 
         // Loop through each color set
         for (_, positions) in PROPS_BY_COLOR.iter() {
             let mut owned_props = self.diff_owned_properties(handle).clone();
             let mut has_effect = false;
+
+            // The player has to own at least one of the properties in this colour set
+            if my_props.is_disjoint(positions) {
+                continue;
+            }
 
             // Loop through all the properties in this color set
             for pos in positions {
@@ -875,10 +894,16 @@ impl Game {
         } else {
             ChanceCard::SideRentDec
         };
+        let my_props = self.get_current_props(handle);
 
         for positions in PROPS_BY_SIDE.iter() {
             let mut owned_properties = self.diff_owned_properties(handle).clone();
             let mut has_effect = false;
+
+            // The player has to own at least one of the properties on this side of the board
+            if my_props.is_disjoint(positions) {
+                continue;
+            }
 
             for pos in positions {
                 // Check if the property is owned
