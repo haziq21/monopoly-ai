@@ -278,23 +278,23 @@ lazy_static! {
     ]);
 
     /// Positions of the properties on the game board, sorted by their color set.
-    pub static ref PROPS_BY_COLOR: HashMap<Color,Vec<u8>> = HashMap::from([
-        (Color::Brown, vec![1, 3]),
-        (Color::LightBlue, vec![5, 6, 8]),
-        (Color::Pink, vec![10, 12, 13]),
-        (Color::Orange, vec![14, 15, 17]),
-        (Color::Red, vec![19, 21, 22]),
-        (Color::Yellow, vec![23, 24, 26]),
-        (Color::Green, vec![28, 30, 31]),
-        (Color::Blue, vec![33, 35]),
+    pub static ref PROPS_BY_COLOR: HashMap<Color,HashSet<u8>> = HashMap::from([
+        (Color::Brown, HashSet::from([1, 3])),
+        (Color::LightBlue, HashSet::from([5, 6, 8])),
+        (Color::Pink, HashSet::from([10, 12, 13])),
+        (Color::Orange, HashSet::from([14, 15, 17])),
+        (Color::Red, HashSet::from([19, 21, 22])),
+        (Color::Yellow, HashSet::from([23, 24, 26])),
+        (Color::Green, HashSet::from([28, 30, 31])),
+        (Color::Blue, HashSet::from([33, 35])),
     ]);
 
     /// Positions of the properties on the game board, sorted by the side of the board they're on.
-    pub static ref PROPS_BY_SIDE: [Vec<u8>; 4] = [
-        vec![1, 3, 5, 6, 8],
-        vec![10, 12, 13, 14, 15, 17],
-        vec![19, 21, 22, 23, 24, 26],
-        vec![28, 30, 31, 33, 35]
+    pub static ref PROPS_BY_SIDE: [HashSet<u8>; 4] = [
+        HashSet::from([1, 3, 5, 6, 8]),
+        HashSet::from([10, 12, 13, 14, 15, 17]),
+        HashSet::from([19, 21, 22, 23, 24, 26]),
+        HashSet::from([28, 30, 31, 33, 35])
     ];
 
     /// Neighbours of properties in the form
