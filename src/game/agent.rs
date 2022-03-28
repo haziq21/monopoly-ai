@@ -187,15 +187,13 @@ impl MCTreeNode {
             }
         }
 
-        let player_balance = game.diff_players(handle)[pindex].balance.max(0);
-        let total_balance: i32 = game
-            .diff_players(handle)
-            .iter()
-            .map(|p| p.balance.max(0))
-            .sum();
+        let players = game.diff_players(handle);
+        let player_balance = players[pindex].balance as f64;
+        let mean_balance: f64 = players.iter().map(|p| p.balance).sum::<i32>() as f64
+            / game.diff_players(handle).len() as f64;
 
-        // The value of the game state is calculated as the percentage of wealth a player owns
-        player_balance as f64 / total_balance as f64
+        // The value of the game state is calculated as a player's distance from the mean balance
+        (mean_balance - player_balance).abs()
     }
 }
 
