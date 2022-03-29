@@ -460,13 +460,18 @@ impl Game {
                         _ => unreachable!(),
                     };
 
-                    *updated_jail_rounds =
-                        updated_jail_rounds.iter().map(|jr| 0.max(jr - 1)).collect();
+                    *updated_jail_rounds = updated_jail_rounds
+                        .iter()
+                        .map(|&jr| if jr > 0 { jr - 1 } else { 0 })
+                        .collect();
                 }
                 None => {
                     // Set new JailRounds diff
-                    let jail_rounds = self.diff_jail_rounds(handle);
-                    let new_diff: Vec<u8> = jail_rounds.iter().map(|jr| 0.max(jr - 1)).collect();
+                    let new_diff: Vec<u8> = self
+                        .diff_jail_rounds(handle)
+                        .iter()
+                        .map(|&jr| if jr > 0 { jr - 1 } else { 0 })
+                        .collect();
                     child.set_jail_rounds(new_diff);
                 }
             }
@@ -775,6 +780,7 @@ impl Game {
 
         if children.len() == 0 {
             let mut state = StateDiff::new_with_parent(handle);
+            state.branch_type = BranchType::Chance(1.);
             self.advance_move(handle, &mut state);
             children.push(state);
         }
@@ -873,7 +879,9 @@ impl Game {
         if children.len() > 0 {
             children
         } else {
-            vec![self.new_state_from_cc(cc, handle)]
+            let mut no_change = self.new_state_from_cc(cc, handle);
+            no_change.branch_type = BranchType::Chance(1.);
+            vec![no_change]
         }
     }
 
