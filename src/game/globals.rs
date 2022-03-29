@@ -404,48 +404,6 @@ lazy_static! {
         .sum::<f64>();
 }
 
-/// Return every significant result of attempting to roll doubles for a maximum of `tries` times.
-pub fn roll_for_doubles(tries: i32) -> Vec<DiceRoll> {
-    /*
-     *  Let P(S) be the probability that a double is not attained in one roll.
-     *  Let P(r) be the probability of obtaining a specific dice configuration
-     *  `r` after one roll. `SIGNIFICANT_ROLLS` demonstrates all possible
-     *  "specific dice configurations".
-     *
-     *  When rolling the dice for maximum of `n` times, or stopping
-     *  when we get doubles, the probabilities work out as follows:
-     *
-     *  The probability of the final roll `r` being any double `d` (where the sum
-     *  of the dice is `2d`) is given by `sum_(i=0)^(n-1) P(r) * P(S)^i`.
-     *
-     *  The probability of all `n` rolls being non-doubles (and hence the
-     *  final roll being a non-double `r`) is given by `P(r) * P(S)^(n - 1)`.
-     *
-     *  The following code implements this.
-     */
-    SIGNIFICANT_ROLLS
-        .iter()
-        .map(|&roll| {
-            DiceRoll {
-                probability: if roll.is_double {
-                    let mut double_probability = 0.;
-
-                    // sum_(i=0)^(n-1) P(r) * P(S)^i
-                    for i in 0..tries {
-                        double_probability += roll.probability * SINGLE_PROBABILITY.powi(i);
-                    }
-
-                    double_probability
-                } else {
-                    // P(r) * P(S)^(n - 1)
-                    roll.probability * SINGLE_PROBABILITY.powi(tries - 1)
-                },
-                ..roll
-            }
-        })
-        .collect()
-}
-
 /// From the set of {x ∈ Z | 0 ≤ x ≤ n }, return all the possible k-long combinations.
 /// Adapted from this stackoverflow answer (https://stackoverflow.com/a/8332722) written in Delphi.
 pub fn get_combinations(n: usize, k: usize) -> Vec<Vec<usize>> {
