@@ -195,12 +195,39 @@ impl std::fmt::Display for Player {
     }
 }
 
-// struct GameplayStats {
-//     sentences_received: Vec<u64>,
-//     property_worth: Vec<i32>,
-//     location_tile_usage: Vec<(u64, u64)>,
-//     auction_rate: Vec<(u64, u64)>,
-// }
+pub struct GameplayStats {
+    /// One `u32` for each player
+    sentenced_rounds: Vec<u32>,
+    /// One `(usize, Vec<i32>)` for each turn
+    property_worth: Vec<(usize, Vec<i32>)>,
+    /// One `Vec<(usize, bool)>` for each player
+    location_tile_usage: Vec<Vec<(usize, bool)>>,
+    /// One `Vec<(usize, bool)>` for each player
+    auction_rate: Vec<Vec<(usize, bool)>>,
+}
+
+impl GameplayStats {
+    pub fn new(player_count: usize) -> GameplayStats {
+        GameplayStats {
+            sentenced_rounds: vec![0; player_count],
+            property_worth: vec![],
+            location_tile_usage: vec![vec![]; player_count],
+            auction_rate: vec![vec![]; player_count],
+        }
+    }
+
+    pub fn update_location_tile_usage(&mut self, pindex: usize, turn: usize, used: bool) {
+        self.location_tile_usage[pindex].push((turn, used));
+    }
+
+    pub fn update_auction_rate(&mut self, pindex: usize, turn: usize, auctioned: bool) {
+        self.auction_rate[pindex].push((turn, auctioned));
+    }
+
+    pub fn update_prop_worths(&mut self, turn: usize, worths: Vec<i32>) {
+        self.property_worth.push((turn, worths));
+    }
+}
 
 #[derive(Copy, Clone)]
 pub enum DiffID {
@@ -211,10 +238,11 @@ pub enum DiffID {
     CurrentPlayer,
     Players,
     BranchType,
+    JailRounds,
 }
 
 impl DiffID {
-    pub fn all() -> [DiffID; 7] {
+    pub fn all() -> [DiffID; 8] {
         [
             DiffID::Level1Rent,
             DiffID::SeenCcsHead,
@@ -223,6 +251,7 @@ impl DiffID {
             DiffID::CurrentPlayer,
             DiffID::Players,
             DiffID::BranchType,
+            DiffID::JailRounds,
         ]
     }
 }

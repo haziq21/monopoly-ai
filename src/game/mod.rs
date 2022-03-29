@@ -22,6 +22,8 @@ pub struct Game {
     dirty_handles: Vec<usize>,
     /// The index of the state the game is currently at.
     root_handle: usize,
+    /// The data collected during the simulation.
+    gameplay_stats: GameplayStats,
 }
 
 impl Game {
@@ -35,6 +37,7 @@ impl Game {
             nodes: vec![StateDiff::new_root(player_count)],
             dirty_handles: vec![],
             root_handle: 0,
+            gameplay_stats: GameplayStats::new(player_count),
         }
     }
 
@@ -102,12 +105,42 @@ impl Game {
     }
 
     /// Set the root state to be one of the existing root state's children.
-    /// `child_index` is not a regular handle, but the index of the target
-    /// state in the current root node's `children` vec.
+    /// Also update gameplay_stats. `child_index` is not a regular handle,
+    /// but the index of the target state in the current root node's `children` vec.
     fn advance_root_node(&mut self, child_index: usize) {
         let new_handle = self.nodes[self.root_handle]
             .children
             .swap_remove(child_index);
+
+        let pindex = self.diff_current_pindex(self.root_handle);
+
+        // Update the gameplay stats
+        match self.nodes[self.root_handle].next_move {
+            MoveType::Property => {
+                let child_msg = &self.nodes[new_handle].message;
+                // child_msg could be something other than these
+                if matches!(child_msg, DiffMessage::BuyProp | DiffMessage::AuctionProp) {
+                    self.gameplay_stats.update_auction_rate(
+                        pindex,
+                        self.root_turn,
+                        matches!(child_msg, DiffMessage::AuctionProp),
+                    );
+                }
+            }
+            MoveType::Location => {
+                let child_msg = &self.nodes[new_handle].message;
+                self.gameplay_stats.update_location_tile_usage(
+                    pindex,
+                    self.root_turn,
+                    matches!(child_msg, DiffMessage::Location(_)),
+                );
+            }
+            _ => (),
+        }
+
+        if self.nodes[new_handle].diff_exists(DiffID::OwnedProperties) {
+            let props = self.diff_owned_properties(new_handle);
+        }
 
         // Mark the old handle and all of the new handle's siblings as 'dirty'
         self.dirty_handles.push(self.root_handle);
