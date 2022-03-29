@@ -1,9 +1,8 @@
-use super::globals::DiffID;
 use super::Game;
 use rand::Rng;
 use std::time::{Duration, Instant};
 
-use super::state_diff::{BranchType, FieldDiff};
+use super::state_diff::BranchType;
 
 /// An MTCS tree is essentially a mirror copy of the game tree,
 /// except with property + auction states combined into one node.
@@ -63,9 +62,7 @@ impl MCTreeNode {
         }
 
         for i in 0..count {
-            let bt = game
-                .diff_branch_type(game.nodes[handle].children[i])
-                .clone();
+            let bt = game.nodes[game.nodes[handle].children[i]].branch_type;
             self.children.push(Box::new(MCTreeNode::new(bt)));
         }
     }
@@ -76,13 +73,7 @@ impl MCTreeNode {
         for &step in &game.move_history[latest_unseen_move..] {
             if self.children.len() == 0 {
                 let ending_node = &game.nodes[game.root_handle];
-                let diff_index = ending_node.get_diff_index(DiffID::BranchType).unwrap();
-                let branch_type = match ending_node.diffs[diff_index] {
-                    FieldDiff::BranchType(bt) => bt,
-                    _ => unreachable!(),
-                };
-
-                *self = MCTreeNode::new(branch_type);
+                *self = MCTreeNode::new(ending_node.branch_type);
                 break;
             }
 
@@ -175,7 +166,9 @@ impl MCTreeNode {
         // Play the game randomly until game-over
         while !game.is_terminal(handle) {
             game.gen_children_save(handle);
-            match game.diff_branch_type(game.nodes[handle].children[0]) {
+            let first_child_i = game.nodes[handle].children[0];
+
+            match game.nodes[first_child_i].branch_type {
                 BranchType::Chance(_) => {
                     let child_index = game.get_any_chance_child(handle);
                     handle = game.nodes[handle].children[child_index];
@@ -184,6 +177,7 @@ impl MCTreeNode {
                     let children = &game.nodes[handle].children;
                     handle = children[rng.gen_range(0..children.len())];
                 }
+                BranchType::Undefined => unreachable!(),
             }
         }
 

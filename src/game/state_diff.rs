@@ -12,6 +12,7 @@ pub enum BranchType {
     Chance(f64),
     /// A game state that was achieved by making a choice.
     Choice,
+    Undefined,
 }
 
 /*********        PROPERTY OWNERSHIP        *********/
@@ -97,8 +98,6 @@ impl MoveType {
 /// A field or property of a game state. There are 8 different fields (8 variants of this enum).
 #[derive(Debug, Clone)]
 pub enum FieldDiff {
-    /// The type of branch that led to a game state.
-    BranchType(BranchType),
     /// The players playing the game.
     Players(Vec<Player>),
     /// The index of the player whose turn it currently is.
@@ -113,6 +112,7 @@ pub enum FieldDiff {
     /// The number of rounds to go before the effect of the chance card
     /// "all players pay level 1 rent for the next two rounds" wears off.
     Level1Rent(u8),
+    JailRounds(Vec<u8>),
 }
 
 /*********        STATE DIFF        *********/
@@ -123,7 +123,7 @@ pub struct StateDiff {
     /// Changes to the game state since the previous (parent) state.
     /// `FieldDiff`s in this vec will always appear in the same order:
     ///
-    /// 0. `FieldDiff::BranchType`
+    /// 0. `FieldDiff::JailRounds`
     /// 1. `FieldDiff::Players`
     /// 2. `FieldDiff::CurrentPlayer`
     /// 3. `FieldDiff::OwnedProperties`
@@ -132,6 +132,7 @@ pub struct StateDiff {
     pub diffs: Vec<FieldDiff>,
     pub parent: usize,
     pub children: Vec<usize>,
+    pub branch_type: BranchType,
     /// The type of move to be made after a state.
     /// This is not in `diffs` as it changes every move.
     pub next_move: MoveType,
@@ -149,6 +150,7 @@ impl StateDiff {
             present_diffs: 0,
             parent,
             children: vec![],
+            branch_type: BranchType::Undefined,
             next_move: MoveType::Undefined,
             message: DiffMessage::None,
         }
@@ -158,7 +160,7 @@ impl StateDiff {
     pub fn new_root(player_count: usize) -> Self {
         Self {
             diffs: vec![
-                FieldDiff::BranchType(BranchType::Choice),
+                FieldDiff::JailRounds(vec![0; player_count]),
                 FieldDiff::Players(vec![Player::new(); player_count]),
                 FieldDiff::CurrentPlayer(0),
                 FieldDiff::OwnedProperties(HashMap::new()),
@@ -169,6 +171,7 @@ impl StateDiff {
             present_diffs: 0b11111110,
             parent: 0,
             children: vec![],
+            branch_type: BranchType::Undefined,
             next_move: MoveType::Roll,
             message: DiffMessage::None,
         }
@@ -225,11 +228,6 @@ impl StateDiff {
 
     /*********        DIFF SETTERS        *********/
 
-    /// Set a `BranchType` as the state's own diff.
-    pub fn set_branch_type(&mut self, branch_type: BranchType) {
-        self.set_diff(DiffID::BranchType, FieldDiff::BranchType(branch_type));
-    }
-
     /// Set a `players` vector as the state's own diff.
     pub fn set_players(&mut self, players: Vec<Player>) {
         self.set_diff(DiffID::Players, FieldDiff::Players(players));
@@ -257,6 +255,10 @@ impl StateDiff {
 
     pub fn set_level_1_rent(&mut self, rent: u8) {
         self.set_diff(DiffID::Level1Rent, FieldDiff::Level1Rent(rent));
+    }
+
+    pub fn set_jail_rounds(&mut self, jail_rounds: Vec<u8>) {
+        self.set_diff(DiffID::JailRounds, FieldDiff::JailRounds(jail_rounds));
     }
 }
 

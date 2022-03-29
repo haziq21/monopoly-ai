@@ -237,12 +237,11 @@ pub enum DiffID {
     OwnedProperties,
     CurrentPlayer,
     Players,
-    BranchType,
     JailRounds,
 }
 
 impl DiffID {
-    pub fn all() -> [DiffID; 8] {
+    pub fn all() -> [DiffID; 7] {
         [
             DiffID::Level1Rent,
             DiffID::SeenCcsHead,
@@ -250,7 +249,6 @@ impl DiffID {
             DiffID::OwnedProperties,
             DiffID::CurrentPlayer,
             DiffID::Players,
-            DiffID::BranchType,
             DiffID::JailRounds,
         ]
     }
@@ -264,6 +262,8 @@ pub const FREE_PARKING_POSITION: u8 = 18;
 pub const GO_TO_JAIL_POSITION: u8 = 27;
 /// The total number of chance cards there are.
 pub const TOTAL_CHANCE_CARDS: usize = 21;
+/// Number of tries you can use to get out of jail before you have to pay.
+pub const JAIL_TRIES: u8 = 3;
 
 lazy_static! {
     /// Positions of the chance card tiles on the game board.

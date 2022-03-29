@@ -49,12 +49,13 @@ impl Game {
             game.gen_children_save(game.root_handle);
 
             let first_child = game.nodes[game.root_handle].children[0];
-            let next_branch_type = game.diff_branch_type(first_child);
+            let next_branch_type = game.nodes[first_child].branch_type;
             let curr_pindex = game.diff_current_pindex(game.root_handle);
 
             let next_node = match next_branch_type {
                 BranchType::Chance(_) => game.get_any_chance_child(game.root_handle),
                 BranchType::Choice => agents[curr_pindex].make_choice(&mut game),
+                BranchType::Undefined => panic!("undefined branch type while playing game"),
             };
 
             game.advance_root_node(next_node);
@@ -138,9 +139,10 @@ impl Game {
             _ => (),
         }
 
-        if self.nodes[new_handle].diff_exists(DiffID::OwnedProperties) {
-            let props = self.diff_owned_properties(new_handle);
-        }
+        // TODO: This vvvv
+        // if self.nodes[new_handle].diff_exists(DiffID::OwnedProperties) {
+        //     let props = self.diff_owned_properties(new_handle);
+        // }
 
         // Mark the old handle and all of the new handle's siblings as 'dirty'
         self.dirty_handles.push(self.root_handle);
@@ -203,9 +205,9 @@ impl Game {
     fn get_children_chances(&self, handle: usize) -> Vec<f64> {
         let mut chances = vec![];
 
-        for child_handle in &self.nodes[handle].children {
-            match self.diff_branch_type(*child_handle) {
-                BranchType::Chance(p) => chances.push(*p),
+        for &child_handle in &self.nodes[handle].children {
+            match self.nodes[child_handle].branch_type {
+                BranchType::Chance(p) => chances.push(p),
                 _ => panic!("Choice node found in get_children_chances()"),
             }
         }
@@ -367,10 +369,10 @@ impl Game {
         }
     }
 
-    /// Return the branch type of the state.
-    fn diff_branch_type(&self, handle: usize) -> &BranchType {
-        match self.diff_field(handle, DiffID::BranchType) {
-            FieldDiff::BranchType(x) => x,
+    /// Return a vector of the rounds left to go until the i-th player is released from jail.
+    fn diff_jail_rounds(&self, handle: usize) -> &Vec<u8> {
+        match self.diff_field(handle, DiffID::JailRounds) {
+            FieldDiff::JailRounds(x) => x,
             _ => unreachable!(),
         }
     }
@@ -448,6 +450,28 @@ impl Game {
             }
         }
 
+        // Update all the children's JailRounds diff
+        for child in &mut children {
+            match child.get_diff_index(DiffID::JailRounds) {
+                Some(i) => {
+                    // Update JailRounds diff
+                    let updated_jail_rounds = match &mut child.diffs[i] {
+                        FieldDiff::JailRounds(jr) => jr,
+                        _ => unreachable!(),
+                    };
+
+                    *updated_jail_rounds =
+                        updated_jail_rounds.iter().map(|jr| 0.max(jr - 1)).collect();
+                }
+                None => {
+                    // Set new JailRounds diff
+                    let jail_rounds = self.diff_jail_rounds(handle);
+                    let new_diff: Vec<u8> = jail_rounds.iter().map(|jr| 0.max(jr - 1)).collect();
+                    child.set_jail_rounds(new_diff);
+                }
+            }
+        }
+
         children
     }
 
@@ -459,31 +483,29 @@ impl Game {
 
         // Get the player out of jail if they're in jail
         if self.get_current_player(handle).in_jail {
-            // Try rolling doubles to get out of jail
-            let double_probabilities = roll_for_doubles(3);
+            let jail_rounds = self.diff_jail_rounds(handle)[i];
 
             // Loop through all possible dice results
-            for roll in double_probabilities {
-                // Create a new diff
-                let mut diff = StateDiff::new_with_parent(handle);
-                // Update the branch type
-                diff.set_branch_type(BranchType::Chance(roll.probability));
-                // Clone the players
-                let mut players = self.diff_players(handle).clone();
-                // Update the current player's position
-                players[i].move_by(roll.sum);
+            for roll in SIGNIFICANT_ROLLS.iter() {
+                if !(roll.is_double || jail_rounds == 0) {
+                    continue;
+                }
 
-                // We didn't manage to roll doubles
-                if !roll.is_double {
+                let mut players = self.diff_players(handle).clone();
+                let mut diff = StateDiff::new_with_parent(handle);
+                diff.branch_type = BranchType::Chance(roll.probability);
+                diff.message = DiffMessage::Roll(players[i].position);
+                diff.next_move = MoveType::when_landed_on(players[i].position);
+
+                if !roll.is_double && jail_rounds == 0 {
                     // $100 penalty for not rolling doubles
                     players[i].balance -= 100;
                 }
 
-                diff.message = DiffMessage::Roll(players[i].position);
-                // Set the next move
-                diff.next_move = MoveType::when_landed_on(players[i].position);
-                // Set the players diff
+                // Update the current player's position
+                players[i].move_by(roll.sum);
                 diff.set_players(players);
+
                 // Update the current_player if needed
                 if diff.next_move.is_roll() {
                     diff.set_current_pindex(self.get_next_pindex(handle));
@@ -491,28 +513,35 @@ impl Game {
 
                 children.push(diff);
             }
+
+            // A single state for staying in jail
+            if jail_rounds > 0 {
+                let mut stay_in_jail = StateDiff::new_with_parent(handle);
+                stay_in_jail.branch_type = BranchType::Chance(*SINGLE_PROBABILITY);
+                stay_in_jail.next_move = MoveType::Roll;
+                stay_in_jail.set_current_pindex(self.get_next_pindex(handle));
+
+                children.push(stay_in_jail);
+            }
         }
         // Otherwise, play as normal
         else {
             // Loop through all possible dice results
             for roll in SIGNIFICANT_ROLLS.iter() {
-                // Create a new state
                 let mut state = StateDiff::new_with_parent(handle);
-                // Update the branch type
-                state.set_branch_type(BranchType::Chance(roll.probability));
-                // Clone the players
-                let mut players = self.diff_players(handle).clone();
+                state.branch_type = BranchType::Chance(roll.probability);
+
                 // Update the current player's position
+                let mut players = self.diff_players(handle).clone();
                 players[i].move_by(roll.sum);
 
-                // Check if the player landed on 'go to jail'
                 if players[i].position == GO_TO_JAIL_POSITION {
                     players[i].send_to_jail();
+                    let mut jail_rounds = self.diff_jail_rounds(handle).clone();
+                    jail_rounds[i] = JAIL_TRIES;
+                    state.set_jail_rounds(jail_rounds);
                     state.message = DiffMessage::RollToJail;
-                }
-                // Check if this roll got doubles
-                else if roll.is_double {
-                    // Increment the doubles_rolled counter
+                } else if roll.is_double {
                     players[i].doubles_rolled += 1;
 
                     // Go to jail after three consecutive doubles
@@ -528,13 +557,11 @@ impl Game {
                     state.message = DiffMessage::Roll(players[i].position);
                 }
 
-                // Set the next move
                 state.next_move = MoveType::when_landed_on(players[i].position);
                 // Update the current_player if needed
                 if state.next_move.is_roll() && players[i].doubles_rolled == 0 {
                     state.set_current_pindex(self.get_next_pindex(handle));
                 }
-                // Set the players diff
                 state.set_players(players);
 
                 children.push(state);
@@ -581,7 +608,7 @@ impl Game {
             } else {
                 let mut state = StateDiff::new_with_parent(handle);
                 state.message = DiffMessage::ChanceCard(card);
-                state.set_branch_type(BranchType::Chance(probability));
+                state.branch_type = BranchType::Chance(probability);
                 state.next_move = MoveType::ChoicefulCC(card);
                 children.push(state);
             };
@@ -607,7 +634,7 @@ impl Game {
             let mut new_state = StateDiff::new_with_parent(handle);
             new_state.message = DiffMessage::Location(pos);
             new_state.next_move = MoveType::Property;
-            new_state.set_branch_type(BranchType::Choice);
+            new_state.branch_type = BranchType::Choice;
             new_state.set_players(players);
             children.push(new_state);
         }
@@ -616,7 +643,7 @@ impl Game {
         let mut no_move = StateDiff::new_with_parent(handle);
         no_move.message = DiffMessage::NoLocation;
         self.advance_move(handle, &mut no_move);
-        no_move.set_branch_type(BranchType::Choice);
+        no_move.branch_type = BranchType::Choice;
         children.push(no_move);
 
         children
@@ -632,7 +659,7 @@ impl Game {
         // Check if the property at the player's location is owned
         if let Some(prop) = self.diff_owned_properties(handle).get(&player_pos) {
             let mut new_state = StateDiff::new_with_parent(handle);
-            new_state.set_branch_type(BranchType::Chance(1.));
+            new_state.branch_type = BranchType::Chance(1.);
 
             // The current player owes rent to the owner of this property
             if prop.owner != curr_pindex {
@@ -680,7 +707,7 @@ impl Game {
             let mut buy_state = StateDiff::new_with_parent(handle);
             buy_state.message = DiffMessage::BuyProp;
             self.advance_move(handle, &mut buy_state);
-            buy_state.set_branch_type(BranchType::Choice);
+            buy_state.branch_type = BranchType::Choice;
             // New players
             let mut buy_state_players = self.diff_players(handle).clone();
             buy_state_players[curr_pindex].balance -= PROPERTIES[&player_pos].price;
@@ -702,7 +729,7 @@ impl Game {
         // The state where the player auctions the property
         let mut auction_state = StateDiff::new_with_parent(handle);
         auction_state.message = DiffMessage::AuctionProp;
-        auction_state.set_branch_type(BranchType::Choice);
+        auction_state.branch_type = BranchType::Choice;
         auction_state.next_move = MoveType::Auction;
         children.push(auction_state);
 
@@ -739,7 +766,7 @@ impl Game {
 
                 new_state.set_players(players);
                 new_state.set_owned_properties(props);
-                new_state.set_branch_type(BranchType::Chance(player_chance * bid_chance));
+                new_state.branch_type = BranchType::Chance(player_chance * bid_chance);
 
                 self.advance_move(handle, &mut new_state);
                 children.push(new_state);
@@ -772,7 +799,7 @@ impl Game {
         // If the current player doesn't have any properties to sell then it's game over
         if my_props.len() == 0 {
             let mut gameover = StateDiff::new_with_parent(handle);
-            gameover.set_branch_type(BranchType::Chance(1.));
+            gameover.branch_type = BranchType::Chance(1.);
             self.advance_move(handle, &mut gameover);
             return vec![gameover];
         }
@@ -790,7 +817,7 @@ impl Game {
 
                 stop_here = true;
                 let mut sell_prop = StateDiff::new_with_parent(handle);
-                sell_prop.set_branch_type(BranchType::Choice);
+                sell_prop.branch_type = BranchType::Choice;
 
                 // Sell all the properties in `comb` to the bank
                 let mut props = self.diff_owned_properties(handle).clone();
@@ -817,7 +844,7 @@ impl Game {
             // This state doesn't need a `next_move` because it's a terminal state
             let mut gameover = StateDiff::new_with_parent(handle);
             self.advance_move(handle, &mut gameover);
-            gameover.set_branch_type(BranchType::Chance(1.));
+            gameover.branch_type = BranchType::Chance(1.);
             vec![gameover]
         } else {
             children
@@ -868,7 +895,7 @@ impl Game {
 
             // Create the diff
             let mut child = self.new_state_from_cc(cc, handle);
-            child.set_branch_type(BranchType::Choice);
+            child.branch_type = BranchType::Choice;
 
             // Update the owned_properties
             let mut owned_props = self.diff_owned_properties(handle).clone();
@@ -911,7 +938,7 @@ impl Game {
             // Only store the new state if it's different
             if has_effect {
                 let mut new_state = self.new_state_from_cc(cc, handle);
-                new_state.set_branch_type(BranchType::Choice);
+                new_state.branch_type = BranchType::Choice;
                 new_state.set_owned_properties(owned_props);
                 children.push(new_state);
             }
@@ -948,7 +975,7 @@ impl Game {
             // Save the child if it's different
             if has_effect {
                 let mut child = self.new_state_from_cc(cc, handle);
-                child.set_branch_type(BranchType::Choice);
+                child.branch_type = BranchType::Choice;
                 child.set_owned_properties(owned_properties);
                 children.push(child);
             }
@@ -983,7 +1010,7 @@ impl Game {
             // Store new state if it's different
             if has_effect {
                 let mut state = self.new_state_from_cc(ChanceCard::RentSpike, handle);
-                state.set_branch_type(BranchType::Choice);
+                state.branch_type = BranchType::Choice;
                 state.set_owned_properties(properties);
                 children.push(state);
             }
@@ -1012,7 +1039,7 @@ impl Game {
 
             // Add the new state
             let mut new_state = self.new_state_from_cc(ChanceCard::Bonus, handle);
-            new_state.set_branch_type(BranchType::Choice);
+            new_state.branch_type = BranchType::Choice;
             new_state.set_players(players);
             children.push(new_state);
         }
@@ -1046,7 +1073,7 @@ impl Game {
 
                 // Add the new state
                 let mut new_state = self.new_state_from_cc(ChanceCard::SwapProperty, handle);
-                new_state.set_branch_type(BranchType::Choice);
+                new_state.branch_type = BranchType::Choice;
                 new_state.set_owned_properties(props);
                 children.push(new_state);
             }
@@ -1071,7 +1098,7 @@ impl Game {
 
             // Add the new state
             let mut new_state = self.new_state_from_cc(ChanceCard::OpponentToJail, handle);
-            new_state.set_branch_type(BranchType::Choice);
+            new_state.branch_type = BranchType::Choice;
             new_state.set_players(players);
             children.push(new_state);
         }
@@ -1090,7 +1117,7 @@ impl Game {
 
             // Create the new state
             let mut new_state = StateDiff::new_with_parent(handle);
-            new_state.set_branch_type(BranchType::Choice);
+            new_state.branch_type = BranchType::Choice;
             new_state.set_players(players);
             new_state.next_move = MoveType::Property;
 
@@ -1144,7 +1171,7 @@ impl Game {
 
         // Create a new state
         let mut state = self.new_state_from_cc(ChanceCard::PropertyTax, handle);
-        state.set_branch_type(BranchType::Chance(probability));
+        state.branch_type = BranchType::Chance(probability);
         state.set_players(updated_players);
 
         state
@@ -1152,7 +1179,7 @@ impl Game {
 
     fn gen_cc_level_1_rent(&self, probability: f64, handle: usize) -> StateDiff {
         let mut state = self.new_state_from_cc(ChanceCard::Level1Rent, handle);
-        state.set_branch_type(BranchType::Chance(probability));
+        state.branch_type = BranchType::Chance(probability);
         // Set the diff to 2 rounds (player_count * 2 turns per player)
         state.set_level_1_rent(self.diff_players(handle).len() as u8 * 2);
 
@@ -1172,7 +1199,7 @@ impl Game {
 
         // Create a new state
         let mut state = self.new_state_from_cc(ChanceCard::AllToParking, handle);
-        state.set_branch_type(BranchType::Chance(probability));
+        state.branch_type = BranchType::Chance(probability);
         state.set_players(updated_players);
 
         state
