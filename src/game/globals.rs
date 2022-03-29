@@ -195,15 +195,16 @@ impl std::fmt::Display for Player {
     }
 }
 
+#[derive(Debug)]
 pub struct GameplayStats {
     /// One `u32` for each player
     sentenced_rounds: Vec<u32>,
-    /// One `(usize, Vec<i32>)` for each turn
-    property_worth: Vec<(usize, Vec<i32>)>,
-    /// One `Vec<(usize, bool)>` for each player
-    location_tile_usage: Vec<Vec<(usize, bool)>>,
-    /// One `Vec<(usize, bool)>` for each player
-    auction_rate: Vec<Vec<(usize, bool)>>,
+    /// One `Vec<i32>` for each turn
+    property_worth: Vec<Vec<i32>>,
+    /// One `(u32, u32)` for each player
+    location_tile_usage: Vec<(u32, u32)>,
+    /// One `(u32, u32)` for each player
+    auction_rate: Vec<(u32, u32)>,
 }
 
 impl GameplayStats {
@@ -211,21 +212,27 @@ impl GameplayStats {
         GameplayStats {
             sentenced_rounds: vec![0; player_count],
             property_worth: vec![],
-            location_tile_usage: vec![vec![]; player_count],
-            auction_rate: vec![vec![]; player_count],
+            location_tile_usage: vec![(0, 0); player_count],
+            auction_rate: vec![(0, 0); player_count],
         }
     }
 
-    pub fn update_location_tile_usage(&mut self, pindex: usize, turn: usize, used: bool) {
-        self.location_tile_usage[pindex].push((turn, used));
+    pub fn update_location_tile_usage(&mut self, pindex: usize, used: bool) {
+        self.location_tile_usage[pindex].0 += used as u32;
+        self.location_tile_usage[pindex].1 += 1;
     }
 
-    pub fn update_auction_rate(&mut self, pindex: usize, turn: usize, auctioned: bool) {
-        self.auction_rate[pindex].push((turn, auctioned));
+    pub fn update_auction_rate(&mut self, pindex: usize, auctioned: bool) {
+        self.auction_rate[pindex].0 += auctioned as u32;
+        self.auction_rate[pindex].1 += 1;
     }
 
-    pub fn update_prop_worths(&mut self, turn: usize, worths: Vec<i32>) {
-        self.property_worth.push((turn, worths));
+    pub fn update_prop_worths(&mut self, worths: Vec<i32>) {
+        self.property_worth.push(worths);
+    }
+
+    pub fn inc_sentenced_rounds(&mut self, pindex: usize) {
+        self.sentenced_rounds[pindex] += JAIL_TRIES as u32;
     }
 }
 

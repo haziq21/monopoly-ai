@@ -1,5 +1,6 @@
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
+use std::iter::zip;
 
 mod globals;
 use globals::*;
@@ -70,6 +71,7 @@ impl Game {
         println!("loser: {}", game.get_loser(game.root_handle));
         println!("node tree size: {}", game.nodes.len());
         println!("turns played: {}", game.root_turn);
+        println!("{:?}", game.gameplay_stats);
     }
 
     /*********        HELPERS        *********/
@@ -113,36 +115,62 @@ impl Game {
             .children
             .swap_remove(child_index);
 
-        let pindex = self.diff_current_pindex(self.root_handle);
+        let curr_pindex = self.diff_current_pindex(self.root_handle);
 
         // Update the gameplay stats
         match self.nodes[self.root_handle].next_move {
+            // Log whether the property was auctioned
             MoveType::Property => {
                 let child_msg = &self.nodes[new_handle].message;
                 // child_msg could be something other than these
                 if matches!(child_msg, DiffMessage::BuyProp | DiffMessage::AuctionProp) {
                     self.gameplay_stats.update_auction_rate(
-                        pindex,
-                        self.root_turn,
+                        curr_pindex,
                         matches!(child_msg, DiffMessage::AuctionProp),
                     );
                 }
             }
+            // Log whether the location tile was used
             MoveType::Location => {
                 let child_msg = &self.nodes[new_handle].message;
                 self.gameplay_stats.update_location_tile_usage(
-                    pindex,
-                    self.root_turn,
+                    curr_pindex,
                     matches!(child_msg, DiffMessage::Location(_)),
                 );
             }
             _ => (),
         }
 
-        // TODO: This vvvv
-        // if self.nodes[new_handle].diff_exists(DiffID::OwnedProperties) {
-        //     let props = self.diff_owned_properties(new_handle);
-        // }
+        // Property worth stats
+        let props = self.diff_owned_properties(new_handle);
+        let player_count = self.diff_players(new_handle).len();
+        let mut worths = vec![0; player_count];
+
+        for (pos, prop) in props {
+            worths[prop.owner] += PROPERTIES[pos].price;
+        }
+
+        self.gameplay_stats.update_prop_worths(worths);
+
+        // Jail stats
+        if self.nodes[new_handle].diff_exists(DiffID::JailRounds) {
+            let update_flags: Vec<(usize, bool)> = zip(
+                self.diff_jail_rounds(self.root_handle),
+                self.diff_jail_rounds(new_handle),
+            )
+            // Map newly sentenced players to `true`
+            .map(|(old, new)| new > old)
+            .enumerate()
+            // Collect here to prevent borrow conflict
+            .collect();
+
+            for (i, update) in update_flags {
+                // The player got into jail in this round or is still serving jail
+                if update {
+                    self.gameplay_stats.inc_sentenced_rounds(i);
+                }
+            }
+        }
 
         // Mark the old handle and all of the new handle's siblings as 'dirty'
         self.dirty_handles.push(self.root_handle);
@@ -355,7 +383,9 @@ impl Game {
         losers[0]
     }
 
-    // fn get_gameover_info(&self, handle: usize) {}
+    fn get_player_count(&self) -> usize {
+        self.diff_players(self.root_handle).len()
+    }
 
     /*********        STATE DIFF GETTERS        *********/
 
@@ -536,15 +566,16 @@ impl Game {
                 let mut state = StateDiff::new_with_parent(handle);
                 state.branch_type = BranchType::Chance(roll.probability);
 
+                let mut advanced_jail_rounds = self.diff_jail_rounds(handle).clone();
+                advanced_jail_rounds[i] = JAIL_TRIES;
+
                 // Update the current player's position
                 let mut players = self.diff_players(handle).clone();
                 players[i].move_by(roll.sum);
 
                 if players[i].position == GO_TO_JAIL_POSITION {
                     players[i].send_to_jail();
-                    let mut jail_rounds = self.diff_jail_rounds(handle).clone();
-                    jail_rounds[i] = JAIL_TRIES;
-                    state.set_jail_rounds(jail_rounds);
+                    state.set_jail_rounds(advanced_jail_rounds);
                     state.message = DiffMessage::RollToJail;
                 } else if roll.is_double {
                     players[i].doubles_rolled += 1;
@@ -552,6 +583,7 @@ impl Game {
                     // Go to jail after three consecutive doubles
                     if players[i].doubles_rolled == 3 {
                         players[i].send_to_jail();
+                        state.set_jail_rounds(advanced_jail_rounds);
                         state.message = DiffMessage::RollToJail;
                     } else {
                         state.message = DiffMessage::RollDoubles(players[i].position);
@@ -1092,22 +1124,26 @@ impl Game {
 
     fn gen_cc_opponent_to_jail(&self, handle: usize) -> Vec<StateDiff> {
         let mut children = vec![];
+        let curr_players = self.diff_players(handle);
         let curr_pindex = self.diff_current_pindex(handle);
 
-        for i in 0..self.diff_players(handle).len() {
-            // Skip the current player
-            if i == curr_pindex {
+        for i in 0..curr_players.len() {
+            // Skip the current player and players who are already in jail
+            if i == curr_pindex || curr_players[i].in_jail {
                 continue;
             }
 
             // Send the opponent to jail
             let mut players = self.diff_players(handle).clone();
             players[i].send_to_jail();
+            let mut jail_rounds = self.diff_jail_rounds(handle).clone();
+            jail_rounds[i] = JAIL_TRIES;
 
             // Add the new state
             let mut new_state = self.new_state_from_cc(ChanceCard::OpponentToJail, handle);
             new_state.branch_type = BranchType::Choice;
             new_state.set_players(players);
+            new_state.set_jail_rounds(jail_rounds);
             children.push(new_state);
         }
 
