@@ -1,5 +1,7 @@
+use super::globals::*;
 use super::Game;
 use rand::Rng;
+use std::iter::zip;
 use std::time::{Duration, Instant};
 
 use super::state_diff::BranchType;
@@ -181,13 +183,23 @@ impl MCTreeNode {
             }
         }
 
-        let players = game.diff_players(handle);
-        let player_balance = players[pindex].balance as f64;
-        let mean_balance: f64 =
-            players.iter().map(|p| p.balance).sum::<i32>() as f64 / players.len() as f64;
+        // Tabulate everyone's balances
+        let player_balances = game.diff_players(handle).iter().map(|p| p.balance as f64);
+
+        // Tabulate everyone's property worths
+        let props = game.diff_owned_properties(handle);
+        let mut total_prop_worths = vec![0.; game.get_player_count()];
+        for (pos, prop) in props {
+            total_prop_worths[prop.owner] += PROPERTIES[pos].price as f64;
+        }
+
+        let scores: Vec<f64> = zip(player_balances, total_prop_worths)
+            .map(|(balance, prop_worth)| balance * prop_worth)
+            .collect();
+        let mean_score: f64 = scores.iter().sum::<f64>() / scores.len() as f64;
 
         // The value of the game state is calculated as a player's distance from the mean balance
-        player_balance - mean_balance
+        scores[pindex] - mean_score
     }
 }
 
