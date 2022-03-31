@@ -1,6 +1,8 @@
 use lazy_static::lazy_static;
+use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::fs;
 
 #[derive(Debug, Copy, Clone)]
 /// A possible outcome of rolling the dice.
@@ -197,23 +199,26 @@ impl std::fmt::Display for Player {
 
 #[derive(Debug)]
 pub struct GameplayStats {
-    /// One `u32` for each player
-    sentenced_rounds: Vec<u32>,
-    /// One `Vec<i32>` for each turn
+    /// The net property worths of each player over time.
     property_worth: Vec<Vec<i32>>,
-    /// One `(u32, u32)` for each player
+    /// The auction rates of each player over time.
+    /// Each round looks like `(round, player, auctioned)`.
+    auction_rate: Vec<(usize, usize, bool)>,
+    /// The usage rate of location tiles. The tuple stores
+    /// a fraction using its numerator and denominator.
     location_tile_usage: Vec<(u32, u32)>,
-    /// One `(u32, u32)` for each player
-    auction_rate: Vec<(u32, u32)>,
+    /// The number of rounds that each player was in jail for.
+    sentenced_rounds: Vec<u32>,
 }
 
 impl GameplayStats {
+    /****     PUBLIC INTERFACES     ****/
     pub fn new(player_count: usize) -> GameplayStats {
         GameplayStats {
             sentenced_rounds: vec![0; player_count],
             property_worth: vec![],
             location_tile_usage: vec![(0, 0); player_count],
-            auction_rate: vec![(0, 0); player_count],
+            auction_rate: vec![],
         }
     }
 
@@ -222,9 +227,8 @@ impl GameplayStats {
         self.location_tile_usage[pindex].1 += 1;
     }
 
-    pub fn update_auction_rate(&mut self, pindex: usize, auctioned: bool) {
-        self.auction_rate[pindex].0 += auctioned as u32;
-        self.auction_rate[pindex].1 += 1;
+    pub fn update_auction_rate(&mut self, pindex: usize, round: usize, auctioned: bool) {
+        self.auction_rate.push((round, pindex, auctioned));
     }
 
     pub fn update_prop_worths(&mut self, worths: Vec<i32>) {
@@ -233,6 +237,110 @@ impl GameplayStats {
 
     pub fn inc_sentenced_rounds(&mut self, pindex: usize) {
         self.sentenced_rounds[pindex] += JAIL_TRIES as u32;
+    }
+
+    pub fn save_to_csv(&self, loser: usize) {
+        let uid: String = rand::thread_rng().gen::<u32>().to_string();
+        println!("{:?}", fs::create_dir_all(format!("./data/{}", uid)));
+        fs::write(
+            format!("./data/{}/sentences.csv", uid),
+            self.csv_sentenced_rounds(),
+        );
+        fs::write(
+            format!("./data/{}/auctions.csv", uid),
+            self.csv_auction_rate(),
+        );
+        fs::write(
+            format!("./data/{}/prop_worth.csv", uid),
+            self.csv_prop_worth(),
+        );
+        fs::write(format!("./data/{}/location.csv", uid), self.csv_location());
+        fs::write(
+            format!("./data/{}/loser.csv", uid),
+            format!("loser\n{}", loser.to_string()),
+        );
+    }
+
+    /****     HELPER FUNCTIONS     ****/
+
+    fn get_player_count(&self) -> usize {
+        self.sentenced_rounds.len()
+    }
+
+    fn get_round_count(&self) -> usize {
+        self.property_worth.len()
+    }
+
+    fn csv_sentenced_rounds(&self) -> String {
+        let headers = (0..self.sentenced_rounds.len())
+            .map(|i| format!("player {}", i))
+            .collect::<Vec<String>>()
+            .join(",");
+
+        let row = self
+            .sentenced_rounds
+            .iter()
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>()
+            .join(",");
+
+        [headers, row].join("\n")
+    }
+
+    fn csv_prop_worth(&self) -> String {
+        let mut csv = "move number,".to_owned();
+        csv.push_str(
+            &(0..self.sentenced_rounds.len())
+                .map(|i| format!("player {}", i))
+                .collect::<Vec<String>>()
+                .join(","),
+        );
+
+        for (i, row) in self.property_worth.iter().enumerate() {
+            csv.push_str(&format!(
+                "\n{},{}",
+                i,
+                row.iter()
+                    .map(|j| j.to_string())
+                    .collect::<Vec<String>>()
+                    .join(",")
+            ));
+        }
+
+        csv
+    }
+
+    fn csv_location(&self) -> String {
+        let headers = (0..self.sentenced_rounds.len())
+            .map(|i| format!("player {}", i))
+            .collect::<Vec<String>>()
+            .join(",");
+
+        let row = self
+            .location_tile_usage
+            .iter()
+            .map(|x| {
+                (if x.1 == 0 {
+                    0.
+                } else {
+                    x.0 as f64 / x.1 as f64
+                })
+                .to_string()
+            })
+            .collect::<Vec<String>>()
+            .join(",");
+
+        [headers, row].join("\n")
+    }
+
+    fn csv_auction_rate(&self) -> String {
+        let mut csv = "move number,player number,auctioned".to_owned();
+
+        for row in &self.auction_rate {
+            csv.push_str(&format!("\n{},{},{}", row.0, row.1, row.2 as u8));
+        }
+
+        csv
     }
 }
 
