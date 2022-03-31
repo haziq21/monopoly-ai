@@ -296,6 +296,10 @@ impl Agent {
                 .iter()
                 .any(|n| n.get_average_value().is_nan())
         {
+            if start_time.elapsed() > max_time {
+                println!("MCTS exceeding time limit ({:?})", start_time.elapsed());
+            }
+
             mcts_node.traverse(game, game.root_handle, agent_index, temperature);
         }
 
@@ -305,6 +309,7 @@ impl Agent {
             .map(|n| n.get_average_value())
             .collect::<Vec<f64>>();
         println!("{:?}", p);
+
         mcts_node.get_best_child_index()
     }
 
