@@ -42,36 +42,33 @@ impl Game {
         }
     }
 
-    /// Play the game until it ends.
+    /// Play the game until it ends, and save the gameplay statistics to a CSV file.
     pub fn play(mut agents: Vec<Agent>) {
         let mut game = Game::new(agents.len());
 
         while !game.is_terminal(game.root_handle) {
+            // Generate the root node's direct children
             game.gen_children_save(game.root_handle);
 
             let first_child = game.nodes[game.root_handle].children[0];
             let next_branch_type = game.nodes[first_child].branch_type;
             let curr_pindex = game.diff_current_pindex(game.root_handle);
 
+            // Randomly select a child if it's a chance node, or get
+            // the current player to choose one if it's the choice node.
             let next_node = match next_branch_type {
                 BranchType::Chance(_) => game.get_any_chance_child(game.root_handle),
                 BranchType::Choice => agents[curr_pindex].make_choice(&mut game),
                 BranchType::Undefined => panic!("undefined branch type while playing game"),
             };
 
+            // Set this chosen child node as the new root node
             game.advance_root_node(next_node);
-
-            print!("{}", game.diff_players(game.root_handle)[curr_pindex]);
-            println!(
-                " (p{}): {}",
-                curr_pindex, game.nodes[game.root_handle].message
-            );
         }
 
-        println!("loser: {}", game.get_loser(game.root_handle));
-        println!("node tree size: {}", game.nodes.len());
-        println!("turns played: {}", game.root_turn);
-        println!("{:?}", game.gameplay_stats);
+        // Save the gameplay statistics to a CSV file
+        game.gameplay_stats
+            .save_to_csv(game.get_loser(game.root_handle));
     }
 
     /*********        HELPERS        *********/
@@ -126,6 +123,7 @@ impl Game {
                 if matches!(child_msg, DiffMessage::BuyProp | DiffMessage::AuctionProp) {
                     self.gameplay_stats.update_auction_rate(
                         curr_pindex,
+                        self.root_turn,
                         matches!(child_msg, DiffMessage::AuctionProp),
                     );
                 }
@@ -142,15 +140,17 @@ impl Game {
         }
 
         // Property worth stats
-        let props = self.diff_owned_properties(new_handle);
-        let player_count = self.diff_players(new_handle).len();
-        let mut worths = vec![0; player_count];
+        if matches!(self.nodes[new_handle].next_move, MoveType::Roll) {
+            let props = self.diff_owned_properties(new_handle);
+            let player_count = self.diff_players(new_handle).len();
+            let mut worths = vec![0; player_count];
 
-        for (pos, prop) in props {
-            worths[prop.owner] += PROPERTIES[pos].price;
+            for (pos, prop) in props {
+                worths[prop.owner] += PROPERTIES[pos].price;
+            }
+
+            self.gameplay_stats.update_prop_worths(worths);
         }
-
-        self.gameplay_stats.update_prop_worths(worths);
 
         // Jail stats
         if self.nodes[new_handle].diff_exists(DiffID::JailRounds) {
@@ -179,7 +179,7 @@ impl Game {
         }
 
         // Update the root turn
-        if self.nodes[new_handle].diff_exists(DiffID::CurrentPlayer) {
+        if matches!(self.nodes[new_handle].next_move, MoveType::Roll) {
             self.root_turn += 1;
         }
 
@@ -470,11 +470,11 @@ impl Game {
             MoveType::Undefined => unreachable!(),
         };
 
-        let lvl_1_rent = self.diff_lvl_1_rent(handle);
-        if lvl_1_rent > 0 {
-            for child in &mut children {
-                // Check if it's the next player's turn
-                if child.diff_exists(DiffID::CurrentPlayer) {
+        // It's the end of this player's turn
+        if self.nodes[handle].diff_exists(DiffID::CurrentPlayer) {
+            let lvl_1_rent = self.diff_lvl_1_rent(handle);
+            if lvl_1_rent > 0 {
+                for child in &mut children {
                     child.set_level_1_rent(lvl_1_rent - 1);
                 }
             }
@@ -482,6 +482,10 @@ impl Game {
 
         // Update all the children's JailRounds diff
         for child in &mut children {
+            if !child.diff_exists(DiffID::CurrentPlayer) {
+                continue;
+            }
+
             match child.get_diff_index(DiffID::JailRounds) {
                 Some(i) => {
                     // Update JailRounds diff
@@ -527,10 +531,8 @@ impl Game {
                 }
 
                 let mut players = self.diff_players(handle).clone();
-                let mut diff = StateDiff::new_with_parent(handle);
-                diff.branch_type = BranchType::Chance(roll.probability);
-                diff.message = DiffMessage::Roll(players[i].position);
-                diff.next_move = MoveType::when_landed_on(players[i].position);
+                let mut new_state = StateDiff::new_with_parent(handle);
+                new_state.branch_type = BranchType::Chance(roll.probability);
 
                 if !roll.is_double && jail_rounds == 0 {
                     // $100 penalty for not rolling doubles
@@ -539,14 +541,16 @@ impl Game {
 
                 // Update the current player's position
                 players[i].move_by(roll.sum);
-                diff.set_players(players);
+                new_state.message = DiffMessage::Roll(players[i].position);
+                new_state.next_move = MoveType::when_landed_on(players[i].position);
+                new_state.set_players(players);
 
                 // Update the current_player if needed
-                if diff.next_move.is_roll() {
-                    diff.set_current_pindex(self.get_next_pindex(handle));
+                if new_state.next_move.is_roll() {
+                    new_state.set_current_pindex(self.get_next_pindex(handle));
                 }
 
-                children.push(diff);
+                children.push(new_state);
             }
 
             // A single state for staying in jail
@@ -554,6 +558,7 @@ impl Game {
                 let mut stay_in_jail = StateDiff::new_with_parent(handle);
                 stay_in_jail.branch_type = BranchType::Chance(*SINGLE_PROBABILITY);
                 stay_in_jail.next_move = MoveType::Roll;
+                stay_in_jail.message = DiffMessage::StayInJail;
                 stay_in_jail.set_current_pindex(self.get_next_pindex(handle));
 
                 children.push(stay_in_jail);
@@ -563,45 +568,45 @@ impl Game {
         else {
             // Loop through all possible dice results
             for roll in SIGNIFICANT_ROLLS.iter() {
-                let mut state = StateDiff::new_with_parent(handle);
-                state.branch_type = BranchType::Chance(roll.probability);
-
-                let mut advanced_jail_rounds = self.diff_jail_rounds(handle).clone();
-                advanced_jail_rounds[i] = JAIL_TRIES;
-
                 // Update the current player's position
                 let mut players = self.diff_players(handle).clone();
                 players[i].move_by(roll.sum);
 
+                let mut new_state = StateDiff::new_with_parent(handle);
+                new_state.branch_type = BranchType::Chance(roll.probability);
+                new_state.next_move = MoveType::when_landed_on(players[i].position);
+
+                let mut advanced_jail_rounds = self.diff_jail_rounds(handle).clone();
+                advanced_jail_rounds[i] = JAIL_TRIES * self.diff_players(handle).len() as u8;
+
                 if players[i].position == GO_TO_JAIL_POSITION {
                     players[i].send_to_jail();
-                    state.set_jail_rounds(advanced_jail_rounds);
-                    state.message = DiffMessage::RollToJail;
+                    new_state.set_jail_rounds(advanced_jail_rounds);
+                    new_state.message = DiffMessage::RollToJail;
                 } else if roll.is_double {
                     players[i].doubles_rolled += 1;
 
                     // Go to jail after three consecutive doubles
                     if players[i].doubles_rolled == 3 {
                         players[i].send_to_jail();
-                        state.set_jail_rounds(advanced_jail_rounds);
-                        state.message = DiffMessage::RollToJail;
+                        new_state.set_jail_rounds(advanced_jail_rounds);
+                        new_state.message = DiffMessage::RollToJail;
                     } else {
-                        state.message = DiffMessage::RollDoubles(players[i].position);
+                        new_state.message = DiffMessage::RollDoubles(players[i].position);
                     }
                 } else {
                     // Reset the doubles counter
                     players[i].doubles_rolled = 0;
-                    state.message = DiffMessage::Roll(players[i].position);
+                    new_state.message = DiffMessage::Roll(players[i].position);
                 }
 
-                state.next_move = MoveType::when_landed_on(players[i].position);
                 // Update the current_player if needed
-                if state.next_move.is_roll() && players[i].doubles_rolled == 0 {
-                    state.set_current_pindex(self.get_next_pindex(handle));
+                if new_state.next_move.is_roll() && players[i].doubles_rolled == 0 {
+                    new_state.set_current_pindex(self.get_next_pindex(handle));
                 }
-                state.set_players(players);
 
-                children.push(state);
+                new_state.set_players(players);
+                children.push(new_state);
             }
         }
 
@@ -658,22 +663,25 @@ impl Game {
     fn gen_location_children(&self, handle: usize) -> Vec<StateDiff> {
         let mut children = vec![];
         let curr_pindex = self.diff_current_pindex(handle);
+        let balance = self.get_current_player(handle).balance;
 
-        for &pos in PROP_POSITIONS.iter() {
-            let mut players = self.diff_players(handle).clone();
+        if balance >= 100 {
+            for &pos in PROP_POSITIONS.iter() {
+                let mut players = self.diff_players(handle).clone();
 
-            // Pay $100
-            players[curr_pindex].balance -= 100;
-            // Move to a property
-            players[curr_pindex].position = pos;
+                // Pay $100
+                players[curr_pindex].balance -= 100;
+                // Move to a property
+                players[curr_pindex].position = pos;
 
-            // Add the new state to children
-            let mut new_state = StateDiff::new_with_parent(handle);
-            new_state.message = DiffMessage::Location(pos);
-            new_state.next_move = MoveType::Property;
-            new_state.branch_type = BranchType::Choice;
-            new_state.set_players(players);
-            children.push(new_state);
+                // Add the new state to children
+                let mut new_state = StateDiff::new_with_parent(handle);
+                new_state.message = DiffMessage::Location(pos);
+                new_state.next_move = MoveType::Property;
+                new_state.branch_type = BranchType::Choice;
+                new_state.set_players(players);
+                children.push(new_state);
+            }
         }
 
         // There's also the option to do nothing
@@ -1137,7 +1145,7 @@ impl Game {
             let mut players = self.diff_players(handle).clone();
             players[i].send_to_jail();
             let mut jail_rounds = self.diff_jail_rounds(handle).clone();
-            jail_rounds[i] = JAIL_TRIES;
+            jail_rounds[i] = JAIL_TRIES * self.diff_players(handle).len() as u8;
 
             // Add the new state
             let mut new_state = self.new_state_from_cc(ChanceCard::OpponentToJail, handle);
